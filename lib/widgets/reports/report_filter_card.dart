@@ -52,6 +52,7 @@ class ReportFilterCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DropdownButtonFormField<String>(
+              isExpanded: true,
               value: services.any((s) => s.serviceId == filters.serviceId)
                   ? filters.serviceId
                   : (services.isNotEmpty ? services.first.serviceId : null),
