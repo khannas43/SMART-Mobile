@@ -101,6 +101,7 @@ class ApiException implements Exception {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||
       DioExceptionType.receiveTimeout ||
+      DioExceptionType.transformTimeout ||
       DioExceptionType.connectionError =>
         ApiErrorKind.network,
       DioExceptionType.cancel => ApiErrorKind.cancelled,
@@ -112,7 +113,8 @@ class ApiException implements Exception {
     final message = switch (error.type) {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||
-      DioExceptionType.receiveTimeout =>
+      DioExceptionType.receiveTimeout ||
+      DioExceptionType.transformTimeout =>
         'Request timed out. Check your network and try again.',
       DioExceptionType.connectionError =>
         'Unable to reach SMART servers. Check your internet connection.',

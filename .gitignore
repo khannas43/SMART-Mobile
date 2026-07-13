@@ -31,6 +31,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+# /build/ (trailing slash) doesn't match a symlink, only a real directory —
+# some machines symlink build/ out of iCloud Desktop & Documents for iOS codesign.
+/build
 /coverage/
 
 # Symbolication related

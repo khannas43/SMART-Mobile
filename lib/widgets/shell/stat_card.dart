@@ -160,7 +160,10 @@ class StatSection extends StatelessWidget {
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: crossAxisCount == 1 ? 2.2 : 1.3,
+                // Slightly shorter than the Android-tuned ratio: iOS's system font
+                // line-height for the same fontSize renders taller, which overflowed
+                // this Column by ~1px at the old ratio.
+                childAspectRatio: crossAxisCount == 1 ? 2.1 : 1.25,
               ),
               itemCount: cards.length,
               itemBuilder: (_, i) => StatCard(data: cards[i]),
