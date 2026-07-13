@@ -1,0 +1,7 @@
+# Copy to android/key.properties and fill in after running scripts/generate_release_keystore.ps1
+# NEVER commit key.properties or the keystore file to version control.
+
+storePassword=REPLACE_WITH_STORE_PASSWORD
+keyPassword=REPLACE_WITH_KEY_PASSWORD
+keyAlias=smart-rajasthan-upload
+storeFile=keystore/upload-keystore.jks

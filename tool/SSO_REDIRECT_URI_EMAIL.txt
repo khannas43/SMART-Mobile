@@ -1,0 +1,42 @@
+To: Raj SSO / DoIT&C SSO helpdesk (insert contact)
+Cc: SMART Backend lead, Mobile lead
+Subject: SMART Rajasthan Android app — mobile SSO POST landing (ru=SMART)
+
+Dear SSO Team,
+
+We are releasing the SMART Rajasthan citizen Android application and request
+configuration of the mobile SSO POST landing for the existing SMART service (ru=SMART).
+
+Application details:
+  Name           : SMART Rajasthan (Citizen)
+  Platform       : Android
+  applicationId  : smart.rajasthan.gov.in
+  Service code   : ru=SMART (existing web registration)
+
+Configure Raj SSO auto-POST landing after citizen login (same URL as web):
+
+  UAT  : https://smarttest.rajasthan.gov.in/smart/api/sso/landing
+  Prod : https://smart.rajasthan.gov.in/smart/api/sso/landing
+
+Mobile app opens sign-in with &client=mobile. /landing detects mobile and responds
+HTTP 302 to smartrajasthan://sso-callback?userdetails=...
+The app completes JWT exchange via POST /smart/api/sso/mobile-landing.
+
+Web login uses the same /landing without client=mobile → web portal + cookie.
+
+Reference redirect URIs (App Links):
+  1. smartrajasthan://sso-callback
+  2. https://smarttest.rajasthan.gov.in/mobile/sso-callback   (UAT)
+  3. https://smart.rajasthan.gov.in/mobile/sso-callback       (Production)
+
+Signing certificate SHA-256 fingerprints (Android App Links):
+  Release (Play Store) : 02:CC:ED:A3:A9:C6:61:79:C0:6E:5F:AF:9E:48:A4:C7:EC:BF:8F:D8:89:50:FD:A1:04:EF:6A:BC:90:46:AF:CD
+  Debug (UAT QA only)  : 37:9D:F6:62:1A:65:2D:D9:4A:1A:16:2C:10:F4:4A:A6:7A:99:A6:17:A3:84:17:76:17:C0:5F:82:C5:96:95:34
+
+Please confirm:
+  a) Mobile POST landing URLs above are configured for ru=SMART Android.
+  b) UAT test window and any test SSO accounts for mobile QA.
+
+Thank you,
+[Name]
+SSO Coordinator, SMART Rajasthan

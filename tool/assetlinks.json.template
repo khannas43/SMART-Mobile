@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "smart.rajasthan.gov.in",
+      "sha256_cert_fingerprints": [
+        "02:CC:ED:A3:A9:C6:61:79:C0:6E:5F:AF:9E:48:A4:C7:EC:BF:8F:D8:89:50:FD:A1:04:EF:6A:BC:90:46:AF:CD",
+        "37:9D:F6:62:1A:65:2D:D9:4A:1A:16:2C:10:F4:4A:A6:7A:99:A6:17:A3:84:17:76:17:C0:5F:82:C5:96:95:34"
+      ]
+    }
+  }
+]

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- VAPT: HTTPS only + certificate pinning for GoR SMART / Raj SSO hosts. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">smart.rajasthan.gov.in</domain>
+        <domain includeSubdomains="true">smarttest.rajasthan.gov.in</domain>
+        <domain includeSubdomains="true">sso.rajasthan.gov.in</domain>
+        <domain includeSubdomains="true">ssotest.rajasthan.gov.in</domain>
+        <pin-set expiration="2027-12-31">
+            <!-- SHA-256 SPKI pin (GoR wildcard cert chain, fetched 2026-06). -->
+            <pin digest="SHA-256">hOflMP0VeEdwuJZUfukxgQ/z1soZYaimoyT4mFizU+c=</pin>
+        </pin-set>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
