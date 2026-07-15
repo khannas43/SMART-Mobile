@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app_theme.dart';
 import '../../i18n/app_locale.dart';
 import '../../models/report_models.dart';
+import '../../models/user_role.dart';
 import '../../services/api_error_util.dart';
 import '../../services/reports/sws_report_service.dart';
 import '../../services/role/role_context.dart';
@@ -67,6 +68,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
 
   void _onRoleChanged() {
     if (!mounted) return;
+    if (RoleContext.instance.activePanel != SmartPanel.department) return;
     final next = RoleContext.instance.reportFilter;
     final filtersChanged = next.serviceId != _filters.serviceId ||
         next.districtId != _filters.districtId ||
@@ -84,7 +86,9 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   }
 
   Future<void> _bootstrap() async {
+    if (RoleContext.instance.activePanel != SmartPanel.department) return;
     await RoleContext.instance.syncDepartmentFromMappedList();
+    if (RoleContext.instance.activePanel != SmartPanel.department) return;
     await _loadServices();
     await _loadData();
   }
@@ -191,16 +195,22 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
       case ReportDrillLevel.districts:
         _applyFilters(
           _filters.copyWith(
-            districtId: _pick(row, const ['districtId', 'DISTRICT_ID', 'districtid']),
-            districtName: _pick(row, const ['districtName', 'DISTRICT_NAME']),
+            districtId: _numericIdString(
+              _pick(row, const ['districtId', 'DISTRICT_ID', 'districtid']),
+            ),
+            districtName: _pick(row, const [
+              'districtName',
+              'DISTRICT_NAME',
+              'DISTRICT_NAME_EN',
+            ]),
             clearBlock: true,
             clearRural: true,
           ),
         );
       case ReportDrillLevel.ruralUrban:
-        final area = _pick(row, const ['areaName', 'AREA_NAME']);
+        final area = _pick(row, const ['areaName', 'AREA_NAME', 'isRural', 'IS_RURAL']);
         if (_isUrbanArea(area)) {
-          // Web: Urban → MemberList directly (blockId cleared / 0).
+          // Web ReportPage: Urban → MemberList with blockId=0.
           _applyFilters(
             _filters.copyWith(
               selectedRural: 'Urban',
@@ -218,10 +228,13 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
           );
         }
       case ReportDrillLevel.blocks:
+        // Rural block → beneficiary list (web MemberList with selectedBlockId).
         _applyFilters(
           _filters.copyWith(
-            blockId: _pick(row, const ['blockId', 'BLOCK_ID', 'blockid']),
-            blockName: _pick(row, const ['blockName', 'BLOCK_NAME']),
+            blockId: _numericIdString(
+              _pick(row, const ['blockId', 'BLOCK_ID', 'blockid']),
+            ),
+            blockName: _pick(row, const ['blockName', 'BLOCK_NAME', 'BLOCK_NAME_EN']),
           ),
         );
       case ReportDrillLevel.beneficiaries:
@@ -267,9 +280,32 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   bool _isUrbanArea(String area) {
     final normalized = area.trim().toLowerCase();
     if (normalized.isEmpty) return false;
+    // IS_RURAL flag occasionally surfaces as 0/1 or Y/N from area report.
+    if (normalized == '0' ||
+        normalized == 'n' ||
+        normalized == 'no' ||
+        normalized == 'false') {
+      return true;
+    }
+    if (normalized == '1' ||
+        normalized == 'y' ||
+        normalized == 'yes' ||
+        normalized == 'true') {
+      return false;
+    }
     return normalized == 'urban' ||
         normalized.contains('urban') ||
         normalized.contains('शहरी');
+  }
+
+  /// Normalize JDBC/BigDecimal-style ids ("101.0") before storing on filters.
+  String _numericIdString(String raw) {
+    if (raw.trim().isEmpty) return '';
+    final asInt = int.tryParse(raw.trim());
+    if (asInt != null) return asInt.toString();
+    final asDouble = double.tryParse(raw.trim());
+    if (asDouble != null) return asDouble.toInt().toString();
+    return raw.trim();
   }
 
   String _pick(Map<String, dynamic> row, List<String> keys) {

@@ -33,7 +33,7 @@ class ApiException implements Exception {
   static const invalidRequestMessage = 'Invalid Request';
   static const notFoundMessage = 'Requested data not found.';
   static const serverErrorMessage =
-      'Internal Server Error. Please try again later.';
+      'Unable to load data right now. Please try again later.';
   static const networkErrorMessage =
       'Unable to connect to the server. Please check your internet connection.';
 

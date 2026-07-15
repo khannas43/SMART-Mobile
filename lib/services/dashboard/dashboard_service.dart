@@ -46,11 +46,21 @@ class DashboardService {
   /// Unwraps envelope / nested `data` while preserving count keys.
   static Map<String, dynamic> unwrapDashboardData(Map<String, dynamic> data) {
     final status = data['status']?.toString().toUpperCase();
-    if (status == 'ERROR' || status == 'NO_DATA') {
+    if (status == 'ERROR') {
       throw ApiException(
-        message: data['message']?.toString() ?? 'Dashboard data unavailable.',
+        message: data['message']?.toString() ??
+            'Unable to load dashboard counts. Please try again later.',
         path: '/api/dashboard/commonDashboardCount',
       );
+    }
+
+    // NO_DATA / empty → treat as zeros (do not surface as UI failure).
+    if (status == 'NO_DATA') {
+      return const {
+        'TOTAL_SERVICE': 0,
+        'TOTAL_BENEFICIARY': 0,
+        'UNIQUE_BENEFICIARY': 0,
+      };
     }
 
     final nested = data['data'];

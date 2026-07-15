@@ -73,7 +73,7 @@ void main() {
       expect(apiError.message, ApiException.notFoundMessage);
     });
 
-    test('maps 500 to Internal Server Error message', () {
+    test('maps 500 to friendly server unavailable message', () {
       final error = DioException(
         requestOptions: RequestOptions(path: '/smart/api/test'),
         response: Response(

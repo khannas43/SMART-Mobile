@@ -11,12 +11,14 @@ class MappedDepartment {
 
   factory MappedDepartment.fromRow(Map<String, dynamic> row) {
     final id = _pick(row, const ['id', 'ID', 'departmentId', 'DEPARTMENT_ID']);
+    // Entity field is `departmentName` (web LoginProfile / DepartmentRegistration).
     final name = _pick(row, const [
+      'departmentName',
+      'DEPARTMENT_NAME',
       'departmentNameEn',
       'DEPARTMENT_NAME_EN',
       'nameEn',
       'NAME_EN',
-      'departmentName',
     ]);
     return MappedDepartment(
       id: id,
@@ -67,9 +69,11 @@ class DepartmentService {
   }
 
   Future<List<MappedDepartment>> fetchMappedDepartments() async {
+    // Must match web LoginProfile + entity fields on DEPARTMENT_REGISTRATION.
+    // Wrong fields (e.g. departmentNameEn) cause backend 400 "Invalid request."
     final result = await NextQueryClient.instance.list(
       model: 'DepartmentRegistration',
-      fields: 'id,departmentNameEn,departmentNameHi,departmentCode',
+      fields: 'id,departmentName,status',
       filters: const {
         'executeActionName': 'MappedDeptWithRole',
       },

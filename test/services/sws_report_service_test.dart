@@ -4,7 +4,7 @@ import 'package:smart_rajasthan/services/reports/sws_report_service.dart';
 
 void main() {
   group('SwsReportService.selectedRuralParamForTest', () {
-    test('matches web memberList: Rural → 0, Urban → 1', () {
+    test('matches web memberList: Rural → "0", Urban → "1"', () {
       final now = DateTime.now();
       final rural = ReportFilterState(
         startDate: now.subtract(const Duration(days: 30)),
@@ -29,8 +29,25 @@ void main() {
         selectedRuralId: 0,
       );
 
-      expect(SwsReportService.selectedRuralParamForTest(rural), 0);
-      expect(SwsReportService.selectedRuralParamForTest(urban), 1);
+      // Web: selectedRural === "Rural" ? "0" : "1"
+      expect(SwsReportService.selectedRuralParamForTest(rural), '0');
+      expect(SwsReportService.selectedRuralParamForTest(urban), '1');
+    });
+
+    test('IS_RURAL flag 1 → rural "0", flag 0 → urban "1"', () {
+      final now = DateTime.now();
+      final ruralFlag = ReportFilterState(
+        startDate: now,
+        endDate: now,
+        selectedRural: '1',
+      );
+      final urbanFlag = ReportFilterState(
+        startDate: now,
+        endDate: now,
+        selectedRural: '0',
+      );
+      expect(SwsReportService.selectedRuralParamForTest(ruralFlag), '0');
+      expect(SwsReportService.selectedRuralParamForTest(urbanFlag), '1');
     });
   });
 }

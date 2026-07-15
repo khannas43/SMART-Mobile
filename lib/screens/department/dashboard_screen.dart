@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
+import '../../core/app_logger.dart';
 import '../../i18n/app_locale.dart';
+import '../../models/user_role.dart';
 import '../../services/api_error_util.dart';
+import '../../services/api_exception.dart';
 import '../../services/dashboard/dashboard_service.dart';
 import '../../services/role/role_context.dart';
 import '../../widgets/data_screen_states.dart';
@@ -43,6 +46,9 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
 
   void _onRoleChanged() {
     if (!mounted) return;
+    // Avoid firing MappedDept / counts while leaving the department panel
+    // (panel switch would otherwise surface a spurious "Invalid Request").
+    if (RoleContext.instance.activePanel != SmartPanel.department) return;
     final deptId = RoleContext.instance.selectedDeptId;
     if (deptId == _loadedDeptId && !_loading) return;
     _roleDebounce?.cancel();
@@ -53,6 +59,7 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
 
   Future<void> _load() async {
     if (_loadInFlight) return;
+    if (RoleContext.instance.activePanel != SmartPanel.department) return;
     _loadInFlight = true;
     final generation = ++_loadGeneration;
 
@@ -65,6 +72,7 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
 
     try {
       await RoleContext.instance.syncDepartmentFromMappedList();
+      if (RoleContext.instance.activePanel != SmartPanel.department) return;
       final deptId = RoleContext.instance.selectedDeptId;
 
       if (deptId == null || deptId == '0') {
@@ -91,10 +99,26 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
         _error = null;
       });
     } catch (e) {
+      AppLogger.e(
+        'DepartmentDashboard',
+        'commonDashboardCount failed (deptId=${RoleContext.instance.selectedDeptId})',
+        e,
+      );
       if (!mounted || generation != _loadGeneration) return;
+      // Never show raw "Internal Server Error"; always keep KPI cards at 0.
+      final api = ApiErrorUtil.asApiException(e);
+      final hideBanner = api.kind == ApiErrorKind.server ||
+          api.message == ApiException.serverErrorMessage ||
+          (api.statusCode != null && api.statusCode! >= 500);
       setState(() {
         _data = const {};
-        _error = ApiErrorUtil.friendlyMessage(e);
+        _loadedDeptId = RoleContext.instance.selectedDeptId;
+        _error = hideBanner
+            ? null
+            : context.l(
+                'Unable to load dashboard counts. Showing zeros.',
+                'डैशबोर्ड गणना लोड नहीं हो सकी। शून्य दिखाए जा रहे हैं।',
+              );
         _loading = false;
       });
     } finally {

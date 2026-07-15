@@ -6,6 +6,7 @@ import '../models/user_role.dart';
 import '../screens/shared/dept_picker_dialog.dart';
 import '../services/api_error_presenter.dart';
 import '../services/api_error_util.dart';
+import '../services/api_exception.dart';
 import '../services/role/department_service.dart';
 import '../services/role/role_context.dart';
 
@@ -24,13 +25,24 @@ class _RoleSwitcherState extends State<RoleSwitcher> {
 
   Future<void> _selectPanel(BuildContext context, SmartPanel panel) async {
     if (_switching) return;
+    final roleCtx = RoleContext.instance;
+    if (roleCtx.activePanel == panel) return;
     setState(() => _switching = true);
     try {
-      final roleCtx = RoleContext.instance;
       if (panel == SmartPanel.department) {
         final depts = await DepartmentService.instance.fetchMappedDepartments();
         if (!context.mounted) return;
-        if (depts.isEmpty) return;
+        if (depts.isEmpty) {
+          ApiErrorPresenter.show(
+            ApiException(
+              message: context.l(
+                'No department mapped to your SSO account.',
+                'आपके SSO खाते से कोई विभाग मैप नहीं है।',
+              ),
+            ),
+          );
+          return;
+        }
         // Match web: picker when multiple MappedDeptWithRole rows.
         if (depts.length > 1) {
           final currentId = roleCtx.selectedDeptId;
