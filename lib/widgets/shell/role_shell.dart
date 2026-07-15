@@ -20,6 +20,7 @@ class RoleShell extends StatefulWidget {
     required this.tabIcons,
     required this.tabBuilder,
     this.headerSubtitle,
+    this.useDepartmentHeaderSubtitle = false,
   });
 
   final SmartPanel panel;
@@ -28,6 +29,9 @@ class RoleShell extends StatefulWidget {
   final List<IconData> tabIcons;
   final RoleTabBuilder tabBuilder;
   final String? headerSubtitle;
+
+  /// When true, header subtitle listens to [RoleContext.selectedDeptName].
+  final bool useDepartmentHeaderSubtitle;
 
   @override
   State<RoleShell> createState() => _RoleShellState();
@@ -81,36 +85,51 @@ class _RoleShellState extends State<RoleShell> {
   @override
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
-    return Scaffold(
-      appBar: AppHeader(
-        panel: widget.panel,
-        subtitle: widget.headerSubtitle,
-        onLogout: _loggingOut ? null : _logout,
-        onPanelChanged: () => setState(() {}),
-      ),
-      body: widget.tabBuilder(_tab),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: kBorder)),
-          color: kCard,
+
+    Widget shell(String? subtitle) {
+      return Scaffold(
+        appBar: AppHeader(
+          panel: widget.panel,
+          subtitle: subtitle,
+          onLogout: _loggingOut ? null : _logout,
+          onPanelChanged: () => setState(() {}),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _tab,
-          onTap: (i) => setState(() => _tab = i),
-          selectedItemColor: _accent,
-          unselectedItemColor: kMuted,
-          items: [
-            for (var i = 0; i < widget.tabIcons.length; i++)
-              BottomNavigationBarItem(
-                icon: Icon(widget.tabIcons[i]),
-                label: context.l(
-                  widget.tabLabelsEn[i],
-                  widget.tabLabelsHi[i],
+        body: widget.tabBuilder(_tab),
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: kBorder)),
+            color: kCard,
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _tab,
+            onTap: (i) => setState(() => _tab = i),
+            selectedItemColor: _accent,
+            unselectedItemColor: kMuted,
+            items: [
+              for (var i = 0; i < widget.tabIcons.length; i++)
+                BottomNavigationBarItem(
+                  icon: Icon(widget.tabIcons[i]),
+                  label: context.l(
+                    widget.tabLabelsEn[i],
+                    widget.tabLabelsHi[i],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (widget.useDepartmentHeaderSubtitle) {
+      return ListenableBuilder(
+        listenable: RoleContext.instance,
+        builder: (context, _) {
+          final name = RoleContext.instance.selectedDeptName?.trim();
+          return shell(name != null && name.isNotEmpty ? name : null);
+        },
+      );
+    }
+
+    return shell(widget.headerSubtitle);
   }
 }

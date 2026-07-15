@@ -55,6 +55,7 @@ class StatCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.all(10),
@@ -68,20 +69,23 @@ class StatCard extends StatelessWidget {
             Text(
               data.value,
               style: const TextStyle(
-                fontSize: 28,
+                fontSize: 26,
                 fontWeight: FontWeight.w800,
                 color: kText,
+                height: 1.15,
               ),
+              softWrap: true,
             ),
             const SizedBox(height: 4),
             Text(
               context.l(data.labelEn, data.labelHi),
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: kMuted,
-                letterSpacing: 0.8,
+                height: 1.3,
               ),
+              softWrap: true,
             ),
             const SizedBox(height: 12),
             ClipRRect(
@@ -152,18 +156,28 @@ class StatSection extends StatelessWidget {
         const SizedBox(height: 12),
         LayoutBuilder(
           builder: (context, constraints) {
-            final crossAxisCount = constraints.maxWidth > 600 ? 3 : 1;
+            final wide = constraints.maxWidth > 600;
+            if (!wide) {
+              return Column(
+                children: [
+                  for (var i = 0; i < cards.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 12),
+                    StatCard(data: cards[i]),
+                  ],
+                ],
+              );
+            }
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 // Slightly shorter than the Android-tuned ratio: iOS's system font
                 // line-height for the same fontSize renders taller, which overflowed
                 // this Column by ~1px at the old ratio.
-                childAspectRatio: crossAxisCount == 1 ? 2.1 : 1.25,
+                childAspectRatio: 1.25,
               ),
               itemCount: cards.length,
               itemBuilder: (_, i) => StatCard(data: cards[i]),

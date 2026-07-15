@@ -53,6 +53,7 @@ class ReportFilterCard extends StatelessWidget {
           children: [
             DropdownButtonFormField<String>(
               isExpanded: true,
+              menuMaxHeight: 280,
               value: services.any((s) => s.serviceId == filters.serviceId)
                   ? filters.serviceId
                   : (services.isNotEmpty ? services.first.serviceId : null),
@@ -61,11 +62,29 @@ class ReportFilterCard extends StatelessWidget {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 errorText: servicesError,
               ),
+              selectedItemBuilder: (context) {
+                return services.map((s) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      s.serviceName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
+                  );
+                }).toList();
+              },
               items: services
                   .map(
                     (s) => DropdownMenuItem(
                       value: s.serviceId,
-                      child: Text(s.serviceName, overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        s.serviceName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: true,
+                      ),
                     ),
                   )
                   .toList(),

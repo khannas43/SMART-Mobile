@@ -6,14 +6,14 @@ import '../../core/app_logger.dart';
 import '../../i18n/app_locale.dart';
 import '../../models/user_role.dart';
 import '../../services/api_error_util.dart';
-import '../../services/api_exception.dart';
 import '../../services/auth_service.dart';
 import '../../services/role/role_context.dart';
 import '../../services/role/role_mapping_service.dart';
 import '../../services/role/role_resolver.dart';
 import '../../services/smart_api_service.dart';
-import '../citizen/consent_screen.dart';
 import '../citizen/dashboard_screen.dart';
+import '../citizen/notifications_screen.dart';
+import '../citizen/user_manual_screen.dart';
 import '../department/dashboard_screen.dart';
 import '../reports/report_drilldown_screen.dart';
 import '../shared/dept_picker_dialog.dart';
@@ -131,52 +131,73 @@ class _HomeRouterState extends State<HomeRouter> {
       );
     }
 
+    final currentId = RoleContext.instance.selectedDeptId;
+    final stillValid = currentId != null &&
+        currentId != '0' &&
+        depts.any((d) => d.id == currentId);
+    if (stillValid) {
+      final match = depts.firstWhere((d) => d.id == currentId);
+      if (RoleContext.instance.selectedDeptName != match.name) {
+        await RoleContext.instance.setDepartment(
+          id: match.id,
+          name: match.name,
+        );
+      }
+      return;
+    }
+
+    // Web LoginProfile: auto-select only when exactly one mapped department.
     if (depts.length == 1) {
       await RoleContext.instance.setDepartment(
         id: depts.first.id,
         name: depts.first.name,
       );
-    } else if (RoleContext.instance.selectedDeptId == null) {
-      if (!mounted) return;
-      final picked = await DeptPickerDialog.show(context, depts);
-      if (picked == null) {
-        await RoleContext.instance.switchPanel(SmartPanel.citizen);
-        return;
-      }
-      await RoleContext.instance.setDepartment(
-        id: picked.id,
-        name: picked.name,
-      );
+      return;
     }
+
+    if (!mounted) return;
+    final picked = await DeptPickerDialog.show(context, depts);
+    if (picked == null) {
+      await RoleContext.instance.switchPanel(SmartPanel.citizen);
+      return;
+    }
+    await RoleContext.instance.setDepartment(
+      id: picked.id,
+      name: picked.name,
+    );
   }
 
   Widget _buildShell(SmartPanel panel) {
     return switch (panel) {
       SmartPanel.citizen => RoleShell(
           panel: SmartPanel.citizen,
-          tabLabelsEn: const ['Dashboard', 'Consent'],
-          tabLabelsHi: const ['डैशबोर्ड', 'सहमति'],
+          tabLabelsEn: const ['Dashboard', 'Notifications', 'User Manual'],
+          tabLabelsHi: const ['डैशबोर्ड', 'सूचनाएं', 'मैनुअल'],
           tabIcons: const [
             Icons.dashboard_rounded,
-            Icons.fact_check_outlined,
+            Icons.notifications_outlined,
+            Icons.menu_book_outlined,
           ],
           tabBuilder: (i) => switch (i) {
               0 => const CitizenDashboardScreen(),
-              _ => const CitizenConsentScreen(),
+              1 => const CitizenNotificationsScreen(),
+              _ => const CitizenUserManualScreen(),
             },
         ),
       SmartPanel.department => RoleShell(
           panel: SmartPanel.department,
-          headerSubtitle: RoleContext.instance.selectedDeptName,
-          tabLabelsEn: const ['Dashboard', 'Reports'],
-          tabLabelsHi: const ['डैशबोर्ड', 'रिपोर्ट'],
+          useDepartmentHeaderSubtitle: true,
+          tabLabelsEn: const ['Dashboard', 'Reports', 'User Manual'],
+          tabLabelsHi: const ['डैशबोर्ड', 'रिपोर्ट', 'मैनुअल'],
           tabIcons: const [
             Icons.dashboard_rounded,
             Icons.assessment_outlined,
+            Icons.menu_book_outlined,
           ],
           tabBuilder: (i) => switch (i) {
               0 => const DepartmentDashboardScreen(),
-              _ => const ReportDrilldownScreen(),
+              1 => const ReportDrilldownScreen(),
+              _ => const CitizenUserManualScreen(),
             },
         ),
     };

@@ -24,5 +24,26 @@ void main() {
         '0',
       );
     });
+
+    test('formats Indian grouping for large counts', () {
+      expect(
+        DashboardService.formatIndianNumber(770826),
+        '7,70,826',
+      );
+      expect(
+        DashboardService.stringValue({'TOTAL_SERVICE': 770826}, 'TOTAL_SERVICE'),
+        '7,70,826',
+      );
+    });
+
+    test('unwraps nested data map', () {
+      final raw = {
+        'status': 'OK',
+        'data': {'TOTAL_SERVICE': 5, 'TOTAL_BENEFICIARY': 10},
+      };
+      final unwrapped = DashboardService.unwrapDashboardData(raw);
+      expect(DashboardService.stringValue(unwrapped, 'TOTAL_SERVICE'), '5');
+      expect(DashboardService.stringValue(unwrapped, 'TOTAL_BENEFICIARY'), '10');
+    });
   });
 }

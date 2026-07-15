@@ -7,6 +7,8 @@ import '../../services/auth_service.dart';
 import '../language_switcher.dart';
 import '../role_switcher.dart';
 
+/// Post-login header: logo + full SSO ID on row 1; existing role / language /
+/// logout controls on row 2 (same widgets and behavior as before).
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   const AppHeader({
     super.key,
@@ -21,78 +23,110 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onLogout;
   final VoidCallback? onPanelChanged;
 
+  static const double _row1Height = 64;
+  static const double _row2Height = 48;
+  static const double _accentHeight = 3;
+
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize =>
+      const Size.fromHeight(_row1Height + _row2Height + _accentHeight);
 
   Color get _accent => switch (panel) {
         SmartPanel.citizen => kCitizenOrange,
         SmartPanel.department => kDeptNavyMid,
       };
 
-  String get _displayName {
-    final name = AuthService.instance.session?.userName?.trim();
-    if (name != null && name.isNotEmpty) return name;
+  String get _ssoId {
     final ssoId = AuthService.instance.session?.ssoId?.trim();
     if (ssoId != null && ssoId.isNotEmpty) return ssoId;
-    return 'User';
+    return '—';
   }
 
   @override
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
-    return AppBar(
-      backgroundColor: Colors.white,
-      foregroundColor: kText,
+    return Material(
+      color: Colors.white,
       elevation: 0,
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(3),
-        child: Container(height: 3, color: _accent),
-      ),
-      title: Row(
-        children: [
-          Image.asset(
-            'assets/icon/icon_foreground.png',
-            width: 36,
-            height: 36,
-            fit: BoxFit.contain,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _displayName,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: kText,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: _row1Height,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Image.asset(
+                      'assets/icon/icon_foreground.png',
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Text(
+                              _ssoId,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: kText,
+                                height: 1.2,
+                              ),
+                              softWrap: false,
+                            ),
+                          ),
+                          if (subtitle != null && subtitle!.isNotEmpty)
+                            Text(
+                              subtitle!,
+                              style: const TextStyle(fontSize: 11, color: kMuted),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                if (subtitle != null && subtitle!.isNotEmpty)
-                  Text(
-                    subtitle!,
-                    style: const TextStyle(fontSize: 11, color: kMuted),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
-      actions: [
-        RoleSwitcher(onPanelChanged: onPanelChanged),
-        const LanguageSwitcher(),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: context.l('Logout', 'लॉग आउट'),
-          onPressed: onLogout,
-          icon: const Icon(Icons.logout_rounded, color: kMuted),
+            SizedBox(
+              height: _row2Height,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: RoleSwitcher(onPanelChanged: onPanelChanged),
+                      ),
+                    ),
+                    const LanguageSwitcher(),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: context.l('Logout', 'लॉग आउट'),
+                      onPressed: onLogout,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.logout_rounded, color: kMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Container(height: _accentHeight, color: _accent),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

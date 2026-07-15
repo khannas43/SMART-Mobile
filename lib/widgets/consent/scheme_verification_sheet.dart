@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +13,7 @@ import '../../services/consent_otp_service.dart';
 import '../../services/consent_submit_service.dart';
 
 /// 3-step Provide Consent flow (web `SchemeVerificationModal`).
+/// Steps: Send OTP → Verify OTP → Submit Consent.
 class SchemeVerificationSheet extends StatefulWidget {
   const SchemeVerificationSheet({
     super.key,
@@ -64,6 +67,11 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
   String? _maskedMobile;
   String? _prefixWarning;
   Map<String, dynamic>? _validationResponse;
+  var _resendCounter = 0;
+  Timer? _resendTimer;
+
+  static const _stepLabelsEn = ['Send OTP', 'Verify OTP', 'Consent'];
+  static const _stepLabelsHi = ['OTP भेजें', 'OTP सत्यापित', 'सहमति'];
 
   String get _serviceName =>
       widget.eligibleRow['serviceName']?.toString() ??
@@ -78,10 +86,28 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     ScreenSecurity.disable();
     _otpController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _startResendTimer() {
+    _resendTimer?.cancel();
+    setState(() => _resendCounter = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_resendCounter <= 1) {
+        timer.cancel();
+        setState(() => _resendCounter = 0);
+      } else {
+        setState(() => _resendCounter--);
+      }
+    });
   }
 
   void _showError(Object error) {
@@ -139,6 +165,7 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
           : null;
       if (!mounted) return;
       setState(() => _step = 2);
+      _startResendTimer();
     } catch (e) {
       _showError(e);
     } finally {
@@ -173,6 +200,7 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
       };
       if (!mounted) return;
       FocusScope.of(context).unfocus();
+      _resendTimer?.cancel();
       setState(() => _step = 3);
     } catch (e) {
       _showError(e);
@@ -195,8 +223,8 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
         SnackBar(
           content: Text(
             AppLocaleController.instance.isHindi
-                ? 'सेवा सफलतापूर्वक प्राप्त की गई।'
-                : 'Scheme/Service availed successfully.',
+                ? 'OTP सत्यापित और सहमति सफलतापूर्वक जमा की गई।'
+                : 'OTP verified and consent submitted successfully.',
           ),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
@@ -222,6 +250,7 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
   @override
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
+    final hindi = AppLocaleController.instance.isHindi;
     final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
 
     return SafeArea(
@@ -238,19 +267,41 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
               Row(
                 children: [
                   for (var i = 1; i <= 3; i++) ...[
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: _step >= i ? kCitizenOrange : kBorder,
-                      child: Text(
-                        '$i',
-                        style: TextStyle(
-                          color: _step >= i ? Colors.white : kMuted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                    Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: _step >= i ? kCitizenOrange : kBorder,
+                          child: Text(
+                            '$i',
+                            style: TextStyle(
+                              color: _step >= i ? Colors.white : kMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          hindi ? _stepLabelsHi[i - 1] : _stepLabelsEn[i - 1],
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: _step >= i ? kText : kMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (i < 3)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Container(
+                            height: 2,
+                            color: _step > i ? kCitizenOrange : kBorder,
+                          ),
                         ),
                       ),
-                    ),
-                    if (i < 3) Expanded(child: Container(height: 2, color: kBorder)),
                   ],
                 ],
               ),
@@ -258,8 +309,8 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
               if (_step == 1) ...[
                 Text(
                   context.l(
-                    'To avail $_serviceName, we will send an OTP to your registered mobile number.',
-                    '$_serviceName सेवा के लिए, हम आपके पंजीकृत मोबाइल पर OTP भेजेंगे।',
+                    'To Opt-in for the $_serviceName service, an OTP will be sent to your registered mobile number for verification.',
+                    '$_serviceName सेवा के लिए ऑप्ट-इन करने हेतु, सत्यापन के लिए आपके पंजीकृत मोबाइल पर OTP भेजा जाएगा।',
                   ),
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 14, height: 1.5),
@@ -336,18 +387,34 @@ class _SchemeVerificationSheetState extends State<SchemeVerificationSheet> {
                     context.l('Verify OTP', 'OTP सत्यापित करें'),
                   ),
                 ),
-                TextButton(
-                  onPressed: _loading ? null : () => _sendOtp(isResend: true),
-                  child: Text(context.l('Resend OTP', 'OTP पुनः भेजें')),
-                ),
+                if (_resendCounter > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      context.l(
+                        'Resend OTP in $_resendCounter s',
+                        'OTP पुनः भेजें $_resendCounter सेकंड में',
+                      ),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: kMuted),
+                    ),
+                  )
+                else
+                  TextButton(
+                    onPressed: _loading ? null : () => _sendOtp(isResend: true),
+                    child: Text(context.l('Resend OTP', 'OTP पुनः भेजें')),
+                  ),
               ],
               if (_step == 3) ...[
+                Icon(Icons.check_circle, size: 48, color: Colors.green.shade600),
+                const SizedBox(height: 12),
                 Text(
                   context.l(
-                    'Confirm consent to avail this service.',
-                    'इस सेवा को प्राप्त करने के लिए सहमति की पुष्टि करें।',
+                    'OTP verified. Confirm consent to avail $_serviceName.',
+                    'OTP सत्यापित। $_serviceName सेवा प्राप्त करने के लिए सहमति की पुष्टि करें।',
                   ),
                   textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, height: 1.5),
                 ),
                 const SizedBox(height: 16),
                 FilledButton(

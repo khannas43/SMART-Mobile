@@ -14,6 +14,9 @@ enum ApiErrorKind {
 }
 
 /// Thrown when an HTTP call fails or returns an unexpected payload.
+///
+/// [message] is always UI-safe. Debug details stay in [toString], [path],
+/// [statusCode], and [cause].
 class ApiException implements Exception {
   ApiException({
     required this.message,
@@ -22,6 +25,17 @@ class ApiException implements Exception {
     this.path,
     this.cause,
   });
+
+  static const sessionExpiredMessage =
+      'Session Expired / Please Login Again';
+  static const unauthorizedResourceMessage =
+      'You are not authorized to access this resource.';
+  static const invalidRequestMessage = 'Invalid Request';
+  static const notFoundMessage = 'Requested data not found.';
+  static const serverErrorMessage =
+      'Unable to load data right now. Please try again later.';
+  static const networkErrorMessage =
+      'Unable to connect to the server. Please check your internet connection.';
 
   final String message;
   final ApiErrorKind kind;
@@ -38,48 +52,48 @@ class ApiException implements Exception {
   String toString() {
     final code = statusCode != null ? ' (HTTP $statusCode)' : '';
     final at = path != null ? ' [$path]' : '';
-    return 'ApiException$code$at: $message';
+    final detail = cause != null ? ' cause=$cause' : '';
+    return 'ApiException$code$at: $message$detail';
   }
 
   factory ApiException.fromDioException(DioException error) {
     final nested = error.error;
     if (nested is ApiException) return nested;
 
+    final path = error.requestOptions.uri.path;
+    final response = error.response;
+    final statusCode = response?.statusCode;
+    final serverMessage = extractServerMessage(response?.data);
+
     final root = nested ?? error;
     if (root is SocketException) {
       return ApiException(
-        message: 'Unable to reach SMART servers. Check your internet connection.',
+        message: networkErrorMessage,
         kind: ApiErrorKind.network,
-        path: error.requestOptions.uri.path,
+        path: path,
         cause: error,
       );
     }
     if (root is HandshakeException) {
       return ApiException(
-        message: 'Secure connection failed. Check network or try again later.',
+        message: networkErrorMessage,
         kind: ApiErrorKind.network,
-        path: error.requestOptions.uri.path,
+        path: path,
         cause: error,
       );
     }
     if (root is FormatException) {
       return ApiException(
-        message: 'Server returned an unexpected response. Please try again.',
+        message: serverErrorMessage,
         kind: ApiErrorKind.server,
-        path: error.requestOptions.uri.path,
+        path: path,
         cause: error,
       );
     }
 
-    final response = error.response;
-    final statusCode = response?.statusCode;
-    final path = error.requestOptions.uri.path;
-    final serverMessage = extractServerMessage(response?.data);
-
     if (statusCode == 401) {
       return ApiException(
-        message: serverMessage ??
-            'Your session has expired. Please sign in again.',
+        message: sessionExpiredMessage,
         kind: ApiErrorKind.unauthorized,
         statusCode: statusCode,
         path: path,
@@ -89,8 +103,38 @@ class ApiException implements Exception {
 
     if (statusCode == 403) {
       return ApiException(
-        message: _forbiddenMessage(serverMessage),
+        message: unauthorizedResourceMessage,
         kind: ApiErrorKind.forbidden,
+        statusCode: statusCode,
+        path: path,
+        cause: error,
+      );
+    }
+
+    if (statusCode == 400) {
+      return ApiException(
+        message: invalidRequestMessage,
+        kind: ApiErrorKind.client,
+        statusCode: statusCode,
+        path: path,
+        cause: error,
+      );
+    }
+
+    if (statusCode == 404) {
+      return ApiException(
+        message: notFoundMessage,
+        kind: ApiErrorKind.client,
+        statusCode: statusCode,
+        path: path,
+        cause: error,
+      );
+    }
+
+    if (statusCode != null && statusCode >= 500) {
+      return ApiException(
+        message: serverErrorMessage,
+        kind: ApiErrorKind.server,
         statusCode: statusCode,
         path: path,
         cause: error,
@@ -114,14 +158,13 @@ class ApiException implements Exception {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||
       DioExceptionType.receiveTimeout ||
-      DioExceptionType.transformTimeout =>
-        'Request timed out. Check your network and try again.',
-      DioExceptionType.connectionError =>
-        'Unable to reach SMART servers. Check your internet connection.',
-      DioExceptionType.badCertificate => 'Secure connection failed.',
+      DioExceptionType.transformTimeout ||
+      DioExceptionType.connectionError ||
+      DioExceptionType.badCertificate =>
+        networkErrorMessage,
       DioExceptionType.cancel => 'Request was cancelled.',
       DioExceptionType.badResponse =>
-        serverMessage ?? 'Server returned HTTP $statusCode.',
+        _friendlyFromStatus(statusCode, serverMessage),
       DioExceptionType.unknown =>
         _messageFromUnknown(error, serverMessage),
     };
@@ -138,41 +181,43 @@ class ApiException implements Exception {
   static ApiErrorKind _kindFromStatus(int? statusCode) {
     if (statusCode == null) return ApiErrorKind.unknown;
     if (statusCode >= 500) return ApiErrorKind.server;
+    if (statusCode == 403) return ApiErrorKind.forbidden;
+    if (statusCode == 401) return ApiErrorKind.unauthorized;
     if (statusCode >= 400) return ApiErrorKind.client;
     return ApiErrorKind.unknown;
   }
 
-  static String _messageFromUnknown(DioException error, String? serverMessage) {
-    if (serverMessage != null && serverMessage.trim().isNotEmpty) {
-      return serverMessage.trim();
+  static String _friendlyFromStatus(int? statusCode, String? serverMessage) {
+    if (statusCode == 400) return invalidRequestMessage;
+    if (statusCode == 401) return sessionExpiredMessage;
+    if (statusCode == 403) return unauthorizedResourceMessage;
+    if (statusCode == 404) return notFoundMessage;
+    if (statusCode != null && statusCode >= 500) return serverErrorMessage;
+    if (statusCode != null && statusCode >= 400) return invalidRequestMessage;
+    // Avoid raw server strings like "Forbidden" in the UI.
+    if (serverMessage != null &&
+        serverMessage.toLowerCase().contains('forbidden')) {
+      return unauthorizedResourceMessage;
     }
+    return serverErrorMessage;
+  }
+
+  static String _messageFromUnknown(DioException error, String? serverMessage) {
     final nested = error.error;
     if (nested is Exception && nested.toString().trim().isNotEmpty) {
       final text = nested.toString();
-      if (text.contains('SocketException') || text.contains('Failed host lookup')) {
-        return 'Unable to reach SMART servers. Check your internet connection.';
+      if (text.contains('SocketException') ||
+          text.contains('Failed host lookup') ||
+          text.contains('HandshakeException') ||
+          text.contains('CERT')) {
+        return networkErrorMessage;
       }
-      if (text.contains('HandshakeException') || text.contains('CERT')) {
-        return 'Secure connection failed. Check network or try again later.';
-      }
     }
-    final message = error.message?.trim();
-    if (message != null && message.isNotEmpty) return message;
-    return 'Unexpected network error. Please try again.';
-  }
-
-  static String _forbiddenMessage(String? serverMessage) {
-    if (serverMessage == null || serverMessage.trim().isEmpty) {
-      return 'You do not have permission to perform this action.';
+    if (serverMessage != null &&
+        serverMessage.toLowerCase().contains('forbidden')) {
+      return unauthorizedResourceMessage;
     }
-    final lower = serverMessage.toLowerCase();
-    if (lower.contains('access denied') ||
-        lower.contains('permission') ||
-        lower.contains('forbidden') ||
-        lower.contains('acl')) {
-      return serverMessage.trim();
-    }
-    return 'Access denied: ${serverMessage.trim()}';
+    return networkErrorMessage;
   }
 
   static String? extractServerMessage(Object? data) {

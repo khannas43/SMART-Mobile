@@ -6,6 +6,7 @@ import '../models/user_role.dart';
 import '../screens/shared/dept_picker_dialog.dart';
 import '../services/api_error_presenter.dart';
 import '../services/api_error_util.dart';
+import '../services/api_exception.dart';
 import '../services/role/department_service.dart';
 import '../services/role/role_context.dart';
 
@@ -24,21 +25,45 @@ class _RoleSwitcherState extends State<RoleSwitcher> {
 
   Future<void> _selectPanel(BuildContext context, SmartPanel panel) async {
     if (_switching) return;
+    final roleCtx = RoleContext.instance;
+    if (roleCtx.activePanel == panel) return;
     setState(() => _switching = true);
     try {
-      final roleCtx = RoleContext.instance;
       if (panel == SmartPanel.department) {
-        final deptMappings = roleCtx.mappingsForPanel(SmartPanel.department);
-        if (deptMappings.length > 1) {
-          final depts = await DepartmentService.instance.fetchMappedDepartments();
-          if (!context.mounted) return;
-          if (depts.isEmpty) return;
-          final picked = await DeptPickerDialog.show(context, depts);
-          if (picked == null) return;
-          await roleCtx.switchPanel(SmartPanel.department);
-          await roleCtx.setDepartment(id: picked.id, name: picked.name);
+        final depts = await DepartmentService.instance.fetchMappedDepartments();
+        if (!context.mounted) return;
+        if (depts.isEmpty) {
+          ApiErrorPresenter.show(
+            ApiException(
+              message: context.l(
+                'No department mapped to your SSO account.',
+                'आपके SSO खाते से कोई विभाग मैप नहीं है।',
+              ),
+            ),
+          );
+          return;
+        }
+        // Match web: picker when multiple MappedDeptWithRole rows.
+        if (depts.length > 1) {
+          final currentId = roleCtx.selectedDeptId;
+          final stillValid = currentId != null &&
+              currentId != '0' &&
+              depts.any((d) => d.id == currentId);
+          if (!stillValid) {
+            final picked = await DeptPickerDialog.show(context, depts);
+            if (picked == null) return;
+            await roleCtx.switchPanel(SmartPanel.department);
+            await roleCtx.setDepartment(id: picked.id, name: picked.name);
+          } else {
+            await roleCtx.switchPanel(SmartPanel.department);
+            await roleCtx.syncDepartmentFromMappedList();
+          }
         } else {
           await roleCtx.switchPanel(panel);
+          await roleCtx.setDepartment(
+            id: depts.first.id,
+            name: depts.first.name,
+          );
         }
       } else {
         await roleCtx.switchPanel(panel);

@@ -19,9 +19,24 @@ class ConsentSubmitService {
     final session = AuthService.instance.session;
     final smUserId = session?.smUserId ?? '';
     final userName = session?.userName ?? 'Citizen';
+    final ssoId = session?.ssoId ?? '';
     final rowId = eligibleRow['id']?.toString() ?? '';
-    final serviceId = eligibleRow['serviceId']?.toString() ?? '';
+    final serviceIdRaw = eligibleRow['serviceId'];
+    final serviceId = serviceIdRaw is int
+        ? serviceIdRaw
+        : int.tryParse(serviceIdRaw?.toString() ?? '') ?? serviceIdRaw ?? 0;
     final serviceName = _serviceName(eligibleRow);
+    final memberId = _pickString(eligibleRow, const [
+      'memberId',
+      'MEMBER_ID',
+      'refMemberId',
+    ]);
+    final citizenName = _pickString(eligibleRow, const [
+      'nameEn',
+      'NAME_EN',
+      'memberName',
+      'nameHi',
+    ]);
     final deptId = _pickInt(eligibleRow, const [
       'departmentId',
       'DEPARTMENT_ID',
@@ -31,29 +46,39 @@ class ConsentSubmitService {
       'departmentName',
       'DEPARTMENT_NAME',
       'departmentNameEn',
-      'nameEn',
     ]);
 
+    // Match web `SchemeVerificationModal.updateAppliedServiceStatus` payloads.
     final consentPayload = {
-      'serviceId': serviceId.isNotEmpty ? int.tryParse(serviceId) ?? serviceId : 0,
-      'consentSubject': 'Citizen want to avail this $serviceName',
-      'consentDetail': jsonEncode(const {'consent': 'Citizen Accepted'}),
-      'consentRemark': 'Citizen want to avail this $serviceName',
+      'serviceId': serviceId,
+      'consentSubject':
+          'Consent given successfully, to avail the service $serviceName',
+      'consentDetail': jsonEncode({
+        'consent':
+            'You have given consent successfully to avail the service $serviceName',
+        'serviceName': serviceName,
+        'serviceId': serviceId,
+      }),
+      'consentRemark':
+          'Citizen has given consent successfully to avail $serviceName',
       'consentDepartmentId': deptId,
       'consentDepartmentName': deptName,
       'consentApiId': 0,
       'consentLanguage': 'English',
       'consentType': 'AVAIL_SERVICE',
-      'consentFor': 'DEPARTMENT',
+      'consentFor': 'SMS_JANAADHAAR_ADDITION_AVAILED_WITH_CONSENT',
       'consenterJaMemberId': smUserId,
       'consenterMemberName': userName,
       'citizenEligibleId': rowId,
       'serviceCode': serviceId,
       'serviceName': serviceName,
-      'status': 'PENDING',
+      'status': 'SUCCESS',
       if (otpTxnId != null) 'consentJaOtpTxnId': otpTxnId,
       if (otpValidationResponse != null)
         'consentJaOtpTxnResponse': jsonEncode(otpValidationResponse),
+      'citizenJaMemberId': memberId,
+      'citizenMemberName': citizenName.isNotEmpty ? citizenName : userName,
+      'consenterSsoId': ssoId,
     };
 
     await Future.wait([
@@ -61,7 +86,7 @@ class ConsentSubmitService {
         model: 'EligibleServices',
         idField: 'id',
         idValue: rowId,
-        data: const {'status': 'SUCCESS'},
+        data: const {'status': 'INSERT'},
         roleHeader: 'CITIZEN',
       ),
       _nextQuery.create(

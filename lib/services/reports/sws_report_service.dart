@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../../core/app_logger.dart';
 import '../../models/report_models.dart';
 import '../api_exception.dart';
 import '../next_query_client.dart';
@@ -102,13 +103,14 @@ class SwsReportService {
           'startDate': filters.isoStartDate,
           'endDate': filters.isoEndDate,
           'serviceId': _serviceIdParam(filters.serviceId),
-          'districtId': filters.districtId ?? '0',
+          // Match web memberList.tsx query string exactly.
+          'districtId': _numericId(filters.districtId),
+          'districtName': filters.districtName ?? '',
+          'blockName': filters.blockName ?? '',
+          // Urban: blockId = 0 (web selectedBlockId == null ? 0).
+          'blockId': _numericId(filters.blockId),
+          // Web: selectedRural === "Rural" ? "0" : "1"
           'selectedRural': _selectedRuralParam(filters),
-          'blockId': int.tryParse(filters.blockId ?? '0') ?? 0,
-          if (filters.districtName != null && filters.districtName!.isNotEmpty)
-            'districtName': filters.districtName,
-          if (filters.blockName != null && filters.blockName!.isNotEmpty)
-            'blockName': filters.blockName,
         },
       );
 
@@ -125,25 +127,50 @@ class SwsReportService {
   static int _serviceIdParam(String serviceId) =>
       int.tryParse(serviceId) ?? 1000;
 
-  static int _selectedRuralParam(ReportFilterState filters) {
-    if (filters.selectedRuralId != null) return filters.selectedRuralId!;
-    final rural = filters.selectedRural?.toLowerCase();
-    if (rural == 'rural') return 1;
+  static int _numericId(String? value) {
+    if (value == null || value.trim().isEmpty) return 0;
+    final asInt = int.tryParse(value.trim());
+    if (asInt != null) return asInt;
+    // Guard BigDecimal-style "101.0" from JDBC JSON.
+    final asDouble = double.tryParse(value.trim());
+    if (asDouble != null) return asDouble.toInt();
     return 0;
   }
+
+  /// Match web `memberList.tsx`:
+  /// `selectedRural=${adminReportFilter.selectedRural === "Rural" ? "0" : "1"}`
+  /// Do not use store selectedRuralId (0=Urban / 1=Rural) for this endpoint.
+  static String _selectedRuralParam(ReportFilterState filters) {
+    final rural = filters.selectedRural?.trim() ?? '';
+    final lower = rural.toLowerCase();
+    final isRural = rural == 'Rural' ||
+        lower == 'rural' ||
+        lower.contains('rural') ||
+        rural.contains('ग्रामीण') ||
+        rural == '1'; // IS_RURAL DB flag sometimes surfaces as areaName
+    return isRural ? '0' : '1';
+  }
+
+  /// Exposed for unit tests.
+  static String selectedRuralParamForTest(ReportFilterState filters) =>
+      _selectedRuralParam(filters);
 
   Future<List<Map<String, dynamic>>> _fetchList(
     String endpoint,
     Map<String, dynamic> params,
   ) async {
     try {
+      AppLogger.d('SwsReport', 'GET /api/services/$endpoint $params');
       final response = await _client.get<dynamic>(
         '/api/services/$endpoint',
         queryParameters: params,
         options: _deptOptions,
       );
-      return _parseListResponse(response.data);
+      final rows = _parseListResponse(response.data);
+      AppLogger.d('SwsReport', '$endpoint → ${rows.length} rows');
+      return rows;
     } on DioException catch (e) {
+      AppLogger.e('SwsReport', '$endpoint failed', e);
       throw ApiException.fromDioException(e);
     }
   }
@@ -164,8 +191,29 @@ class SwsReportService {
           message: map['message']?.toString() ?? 'Report request failed.',
         );
       }
-      return [map];
+      final nested = map['data'];
+      if (nested is List) {
+        return nested
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+      }
+      if (_looksLikeBeneficiaryRow(map)) return [map];
+      return [];
     }
     return [];
+  }
+
+  static bool _looksLikeBeneficiaryRow(Map<String, dynamic> map) {
+    for (final key in map.keys) {
+      final upper = key.toUpperCase();
+      if (upper == 'MEMBERNAME' ||
+          upper == 'MEMBERID' ||
+          upper == 'MEMBER_NAME' ||
+          upper == 'MEMBER_ID') {
+        return true;
+      }
+    }
+    return false;
   }
 }

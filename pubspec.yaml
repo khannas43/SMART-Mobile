@@ -21,6 +21,9 @@ dependencies:
   encrypt: ^5.0.3
   shared_preferences: ^2.5.3
   safe_device: ^1.1.7
+  pdfrx: ^2.4.7
+  path_provider: ^2.1.6
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:
@@ -42,5 +45,6 @@ flutter:
   assets:
     - assets/logo.png
     - assets/icon/icon_foreground.png
+    - assets/SMART_Mobile_Application_User_Manual_V1.0.pdf
     - assets/.well-known/assetlinks.json
     - assets/.well-known/assetlinks-uat.json

@@ -11,12 +11,14 @@ class MappedDepartment {
 
   factory MappedDepartment.fromRow(Map<String, dynamic> row) {
     final id = _pick(row, const ['id', 'ID', 'departmentId', 'DEPARTMENT_ID']);
+    // Entity field is `departmentName` (web LoginProfile / DepartmentRegistration).
     final name = _pick(row, const [
+      'departmentName',
+      'DEPARTMENT_NAME',
       'departmentNameEn',
       'DEPARTMENT_NAME_EN',
       'nameEn',
       'NAME_EN',
-      'departmentName',
     ]);
     return MappedDepartment(
       id: id,
@@ -44,11 +46,14 @@ class DepartmentService {
   static final DepartmentService instance = DepartmentService._();
 
   /// Resolves department id from MappedDeptWithRole (web `getSelectedDeptId` source).
+  /// Matches web LoginProfile: preferred match, else sole dept, else null (needs picker).
   Future<MappedDepartment?> resolveDepartment({String? preferredDepartmentId}) async {
     final depts = await fetchMappedDepartments();
     if (depts.isEmpty) return null;
 
-    if (preferredDepartmentId != null && preferredDepartmentId.isNotEmpty) {
+    if (preferredDepartmentId != null &&
+        preferredDepartmentId.isNotEmpty &&
+        preferredDepartmentId != '0') {
       for (final dept in depts) {
         if (dept.id == preferredDepartmentId) return dept;
       }
@@ -58,24 +63,17 @@ class DepartmentService {
     return null;
   }
 
-  /// Picks the mapped department row for dashboard `commonId`.
+  /// Picks the mapped department row for dashboard `commonId` (same rules as web).
   Future<MappedDepartment?> resolveForDashboard({String? selectedDeptId}) async {
-    final depts = await fetchMappedDepartments();
-    if (depts.isEmpty) return null;
-
-    if (selectedDeptId != null && selectedDeptId.isNotEmpty) {
-      for (final dept in depts) {
-        if (dept.id == selectedDeptId) return dept;
-      }
-    }
-
-    return depts.length == 1 ? depts.first : null;
+    return resolveDepartment(preferredDepartmentId: selectedDeptId);
   }
 
   Future<List<MappedDepartment>> fetchMappedDepartments() async {
+    // Must match web LoginProfile + entity fields on DEPARTMENT_REGISTRATION.
+    // Wrong fields (e.g. departmentNameEn) cause backend 400 "Invalid request."
     final result = await NextQueryClient.instance.list(
       model: 'DepartmentRegistration',
-      fields: 'id,departmentNameEn,departmentNameHi,departmentCode',
+      fields: 'id,departmentName,status',
       filters: const {
         'executeActionName': 'MappedDeptWithRole',
       },
