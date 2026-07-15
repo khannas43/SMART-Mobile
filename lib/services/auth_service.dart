@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/auth_session.dart';
+import 'api_exception.dart';
 import 'raj_sso_auth_service.dart';
 import 'role/role_context.dart';
 
@@ -71,7 +72,7 @@ class AuthService extends ChangeNotifier {
   /// Called when the backend rejects the JWT (HTTP 401) or local [exp] passes.
   Future<void> endSession({String? message}) async {
     _sessionEndedMessage =
-        message ?? 'Your session has expired. Please sign in again.';
+        message ?? ApiException.sessionExpiredMessage;
     await clearToken();
   }
 

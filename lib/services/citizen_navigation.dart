@@ -1,6 +1,12 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
-/// Cross-tab navigation for citizen shell (dashboard ↔ consent).
+import '../app_globals.dart';
+import '../app_theme.dart';
+import '../i18n/app_locale.dart';
+import '../screens/citizen/availed_services_screen.dart';
+import '../screens/citizen/consent_screen.dart';
+
+/// Cross-screen navigation helpers for the citizen panel.
 class CitizenNavigation extends ChangeNotifier {
   CitizenNavigation._();
 
@@ -14,16 +20,70 @@ class CitizenNavigation extends ChangeNotifier {
     notifyListeners();
   }
 
-  void goToProvideConsent() {
+  void goToNotifications() {
     _pendingTab = 1;
-    _pendingConsentSection = ConsentSection.provide;
     notifyListeners();
   }
 
-  void goToViewConsents() {
-    _pendingTab = 1;
-    _pendingConsentSection = ConsentSection.view;
+  void goToUserManual() {
+    _pendingTab = 2;
     notifyListeners();
+  }
+
+  /// Opens consent management as a pushed screen (web dashboard entry pattern).
+  void goToProvideConsent() {
+    _pendingConsentSection = ConsentSection.provide;
+    _openConsentScreen();
+  }
+
+  void goToViewConsents() {
+    _pendingConsentSection = ConsentSection.view;
+    _openConsentScreen();
+  }
+
+  void goToAvailedServices() {
+    final nav = gNavigatorKey.currentState;
+    if (nav == null) {
+      notifyListeners();
+      return;
+    }
+    nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const AvailedServicesScreen(),
+      ),
+    );
+  }
+
+  void _openConsentScreen() {
+    final nav = gNavigatorKey.currentState;
+    if (nav == null) {
+      notifyListeners();
+      return;
+    }
+    nav.push(
+      MaterialPageRoute<void>(
+        builder: (context) {
+          AppLocaleScope.watch(context);
+          return Scaffold(
+            backgroundColor: kBg,
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              foregroundColor: kText,
+              elevation: 0,
+              title: Text(
+                context.l('Consent Management', 'सहमति प्रबंधन'),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(3),
+                child: Container(height: 3, color: kCitizenOrange),
+              ),
+            ),
+            body: const CitizenConsentScreen(),
+          );
+        },
+      ),
+    );
   }
 
   int? consumePendingTab() {

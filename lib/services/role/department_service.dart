@@ -44,11 +44,14 @@ class DepartmentService {
   static final DepartmentService instance = DepartmentService._();
 
   /// Resolves department id from MappedDeptWithRole (web `getSelectedDeptId` source).
+  /// Matches web LoginProfile: preferred match, else sole dept, else null (needs picker).
   Future<MappedDepartment?> resolveDepartment({String? preferredDepartmentId}) async {
     final depts = await fetchMappedDepartments();
     if (depts.isEmpty) return null;
 
-    if (preferredDepartmentId != null && preferredDepartmentId.isNotEmpty) {
+    if (preferredDepartmentId != null &&
+        preferredDepartmentId.isNotEmpty &&
+        preferredDepartmentId != '0') {
       for (final dept in depts) {
         if (dept.id == preferredDepartmentId) return dept;
       }
@@ -58,18 +61,9 @@ class DepartmentService {
     return null;
   }
 
-  /// Picks the mapped department row for dashboard `commonId`.
+  /// Picks the mapped department row for dashboard `commonId` (same rules as web).
   Future<MappedDepartment?> resolveForDashboard({String? selectedDeptId}) async {
-    final depts = await fetchMappedDepartments();
-    if (depts.isEmpty) return null;
-
-    if (selectedDeptId != null && selectedDeptId.isNotEmpty) {
-      for (final dept in depts) {
-        if (dept.id == selectedDeptId) return dept;
-      }
-    }
-
-    return depts.length == 1 ? depts.first : null;
+    return resolveDepartment(preferredDepartmentId: selectedDeptId);
   }
 
   Future<List<MappedDepartment>> fetchMappedDepartments() async {

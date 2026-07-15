@@ -28,17 +28,30 @@ class _RoleSwitcherState extends State<RoleSwitcher> {
     try {
       final roleCtx = RoleContext.instance;
       if (panel == SmartPanel.department) {
-        final deptMappings = roleCtx.mappingsForPanel(SmartPanel.department);
-        if (deptMappings.length > 1) {
-          final depts = await DepartmentService.instance.fetchMappedDepartments();
-          if (!context.mounted) return;
-          if (depts.isEmpty) return;
-          final picked = await DeptPickerDialog.show(context, depts);
-          if (picked == null) return;
-          await roleCtx.switchPanel(SmartPanel.department);
-          await roleCtx.setDepartment(id: picked.id, name: picked.name);
+        final depts = await DepartmentService.instance.fetchMappedDepartments();
+        if (!context.mounted) return;
+        if (depts.isEmpty) return;
+        // Match web: picker when multiple MappedDeptWithRole rows.
+        if (depts.length > 1) {
+          final currentId = roleCtx.selectedDeptId;
+          final stillValid = currentId != null &&
+              currentId != '0' &&
+              depts.any((d) => d.id == currentId);
+          if (!stillValid) {
+            final picked = await DeptPickerDialog.show(context, depts);
+            if (picked == null) return;
+            await roleCtx.switchPanel(SmartPanel.department);
+            await roleCtx.setDepartment(id: picked.id, name: picked.name);
+          } else {
+            await roleCtx.switchPanel(SmartPanel.department);
+            await roleCtx.syncDepartmentFromMappedList();
+          }
         } else {
           await roleCtx.switchPanel(panel);
+          await roleCtx.setDepartment(
+            id: depts.first.id,
+            name: depts.first.name,
+          );
         }
       } else {
         await roleCtx.switchPanel(panel);

@@ -68,9 +68,11 @@ class GlobalApiErrorInterceptor extends Interceptor {
     final statusCode = err.response?.statusCode;
 
     if (!skip && statusCode == 401) {
-      final message = ApiException.extractServerMessage(err.response?.data) ??
-          'Your session has expired. Please sign in again.';
-      unawaited(AuthService.instance.endSession(message: message));
+      unawaited(
+        AuthService.instance.endSession(
+          message: ApiException.sessionExpiredMessage,
+        ),
+      );
     }
 
     handler.next(err);

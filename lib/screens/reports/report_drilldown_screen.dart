@@ -29,6 +29,8 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   bool _loadingServices = true;
   String? _error;
   String? _servicesError;
+  var _dataLoadGeneration = 0;
+  var _dataLoadInFlight = false;
 
   List<ServiceOption> get _dropdownServices {
     if (_filters.serviceId == '1000') return _services;
@@ -65,12 +67,19 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
 
   void _onRoleChanged() {
     if (!mounted) return;
+    final next = RoleContext.instance.reportFilter;
+    final filtersChanged = next.serviceId != _filters.serviceId ||
+        next.districtId != _filters.districtId ||
+        next.blockId != _filters.blockId ||
+        next.selectedRural != _filters.selectedRural ||
+        next.startDate != _filters.startDate ||
+        next.endDate != _filters.endDate;
+    if (!filtersChanged) return;
     setState(() {
-      _filters = RoleContext.instance.reportFilter;
+      _filters = next;
       _tempFrom = _filters.startDate;
       _tempTo = _filters.endDate;
     });
-    _loadServices();
     _loadData();
   }
 
@@ -102,23 +111,28 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_dataLoadInFlight) return;
+    _dataLoadInFlight = true;
+    final generation = ++_dataLoadGeneration;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final rows = await SwsReportService.instance.fetchForLevel(_filters);
-      if (!mounted) return;
+      if (!mounted || generation != _dataLoadGeneration) return;
       setState(() {
         _rows = rows;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _dataLoadGeneration) return;
       setState(() {
         _error = ApiErrorUtil.friendlyMessage(e);
         _loading = false;
       });
+    } finally {
+      _dataLoadInFlight = false;
     }
   }
 
@@ -185,7 +199,8 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
         );
       case ReportDrillLevel.ruralUrban:
         final area = _pick(row, const ['areaName', 'AREA_NAME']);
-        if (area.toLowerCase() == 'urban') {
+        if (_isUrbanArea(area)) {
+          // Web: Urban → MemberList directly (blockId cleared / 0).
           _applyFilters(
             _filters.copyWith(
               selectedRural: 'Urban',
@@ -214,6 +229,49 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
     }
   }
 
+  void _onBack() {
+    switch (_filters.drillLevel) {
+      case ReportDrillLevel.beneficiaries:
+        if (_filters.selectedRural == 'Urban') {
+          _applyFilters(
+            _filters.copyWith(clearRural: true, clearBlock: true),
+          );
+        } else {
+          _applyFilters(_filters.copyWith(clearBlock: true));
+        }
+      case ReportDrillLevel.blocks:
+        _applyFilters(_filters.copyWith(clearRural: true, clearBlock: true));
+      case ReportDrillLevel.ruralUrban:
+        _applyFilters(
+          _filters.copyWith(
+            clearDistrict: true,
+            clearBlock: true,
+            clearRural: true,
+          ),
+        );
+      case ReportDrillLevel.districts:
+        _applyFilters(
+          _filters.copyWith(
+            serviceId: '1000',
+            serviceName: '',
+            clearDistrict: true,
+            clearBlock: true,
+            clearRural: true,
+          ),
+        );
+      case ReportDrillLevel.allServices:
+        break;
+    }
+  }
+
+  bool _isUrbanArea(String area) {
+    final normalized = area.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    return normalized == 'urban' ||
+        normalized.contains('urban') ||
+        normalized.contains('शहरी');
+  }
+
   String _pick(Map<String, dynamic> row, List<String> keys) {
     for (final key in keys) {
       for (final entry in row.entries) {
@@ -237,9 +295,21 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            context.l('Reports', 'रिपोर्ट'),
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          Row(
+            children: [
+              if (_filters.drillLevel != ReportDrillLevel.allServices)
+                IconButton(
+                  tooltip: context.l('Back', 'वापस'),
+                  onPressed: _onBack,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+              Expanded(
+                child: Text(
+                  context.l('Reports', 'रिपोर्ट'),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           ReportFilterCard(
@@ -359,30 +429,31 @@ class _BeneficiaryList extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final col in _columns)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              context.l(col.$2, col.$3),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: kMuted,
-                              ),
+                          Text(
+                            context.l(col.$2, col.$3),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: kMuted,
                             ),
                           ),
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              _cell(row, col.$1),
-                              style: const TextStyle(fontSize: 13),
+                          const SizedBox(height: 2),
+                          Text(
+                            _cell(row, col.$1),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              height: 1.35,
                             ),
+                            softWrap: true,
                           ),
                         ],
                       ),

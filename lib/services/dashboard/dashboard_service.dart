@@ -43,6 +43,7 @@ class DashboardService {
     }
   }
 
+  /// Unwraps envelope / nested `data` while preserving count keys.
   static Map<String, dynamic> unwrapDashboardData(Map<String, dynamic> data) {
     final status = data['status']?.toString().toUpperCase();
     if (status == 'ERROR' || status == 'NO_DATA') {
@@ -51,7 +52,30 @@ class DashboardService {
         path: '/api/dashboard/commonDashboardCount',
       );
     }
+
+    final nested = data['data'];
+    if (nested is Map) {
+      final nestedMap = Map<String, dynamic>.from(nested);
+      if (_hasCountKey(nestedMap)) return nestedMap;
+    }
+    if (nested is List && nested.isNotEmpty && nested.first is Map) {
+      final first = Map<String, dynamic>.from(nested.first as Map);
+      if (_hasCountKey(first)) return first;
+    }
     return data;
+  }
+
+  static bool _hasCountKey(Map<String, dynamic> map) {
+    const keys = {
+      'TOTAL_SERVICE',
+      'TOTAL_BENEFICIARY',
+      'UNIQUE_BENEFICIARY',
+      'SCHEME_ONBOARD',
+    };
+    for (final entry in map.entries) {
+      if (keys.contains(entry.key.toUpperCase())) return true;
+    }
+    return false;
   }
 
   /// Case-insensitive lookup for JDBC-quoted keys (`TOTAL_SERVICE`, etc.).
@@ -59,12 +83,51 @@ class DashboardService {
     final target = key.toUpperCase();
     for (final entry in data.entries) {
       if (entry.key.toUpperCase() == target) {
-        final value = entry.value;
-        if (value == null) return '0';
-        return value.toString();
+        return formatIndianNumber(entry.value);
+      }
+    }
+    // Nested fallback (e.g. `{ data: { TOTAL_SERVICE: 1 } }` when unwrap missed).
+    final nested = data['data'];
+    if (nested is Map) {
+      for (final entry in nested.entries) {
+        if (entry.key.toString().toUpperCase() == target) {
+          return formatIndianNumber(entry.value);
+        }
       }
     }
     return '0';
+  }
+
+  /// Matches web `formatIndianNumber` (en-IN grouping).
+  static String formatIndianNumber(Object? val) {
+    if (val == null || val == '') return '0';
+    final numValue = val is num ? val.toDouble() : double.tryParse(val.toString());
+    if (numValue == null || numValue.isNaN) return '0';
+    final negative = numValue < 0;
+    final abs = numValue.abs();
+    final intPart = abs.truncate();
+    final fraction = abs - intPart;
+    final digits = intPart.toString();
+    String grouped;
+    if (digits.length <= 3) {
+      grouped = digits;
+    } else {
+      final last3 = digits.substring(digits.length - 3);
+      var rest = digits.substring(0, digits.length - 3);
+      final parts = <String>[];
+      while (rest.length > 2) {
+        parts.insert(0, rest.substring(rest.length - 2));
+        rest = rest.substring(0, rest.length - 2);
+      }
+      if (rest.isNotEmpty) parts.insert(0, rest);
+      grouped = '${parts.join(',')},$last3';
+    }
+    var result = grouped;
+    if (fraction > 0) {
+      final fracStr = fraction.toStringAsFixed(2).substring(1); // ".xx"
+      result = '$grouped$fracStr';
+    }
+    return negative ? '-$result' : result;
   }
 
   Map<String, dynamic> _asMap(Object? data) {

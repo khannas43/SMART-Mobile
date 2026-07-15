@@ -102,13 +102,13 @@ class SwsReportService {
           'startDate': filters.isoStartDate,
           'endDate': filters.isoEndDate,
           'serviceId': _serviceIdParam(filters.serviceId),
+          // Match web memberList query string fields.
           'districtId': filters.districtId ?? '0',
-          'selectedRural': _selectedRuralParam(filters),
+          'districtName': filters.districtName ?? '',
+          'blockName': filters.blockName ?? '',
           'blockId': int.tryParse(filters.blockId ?? '0') ?? 0,
-          if (filters.districtName != null && filters.districtName!.isNotEmpty)
-            'districtName': filters.districtName,
-          if (filters.blockName != null && filters.blockName!.isNotEmpty)
-            'blockName': filters.blockName,
+          // Web: Rural → "0", Urban → "1" (string/int both accepted).
+          'selectedRural': _selectedRuralParam(filters),
         },
       );
 
@@ -125,12 +125,20 @@ class SwsReportService {
   static int _serviceIdParam(String serviceId) =>
       int.tryParse(serviceId) ?? 1000;
 
+  /// Match web `memberList`: Rural → 0, Urban → 1 for beneficiariservicereport.
+  /// Do not use store selectedRuralId (0=Urban / 1=Rural) for this endpoint.
   static int _selectedRuralParam(ReportFilterState filters) {
-    if (filters.selectedRuralId != null) return filters.selectedRuralId!;
-    final rural = filters.selectedRural?.toLowerCase();
-    if (rural == 'rural') return 1;
-    return 0;
+    final rural = filters.selectedRural?.trim().toLowerCase() ?? '';
+    if (rural == 'rural' || rural.contains('rural') || rural.contains('ग्रामीण')) {
+      return 0;
+    }
+    // Urban (and default when Urban selected) → 1
+    return 1;
   }
+
+  /// Exposed for unit tests.
+  static int selectedRuralParamForTest(ReportFilterState filters) =>
+      _selectedRuralParam(filters);
 
   Future<List<Map<String, dynamic>>> _fetchList(
     String endpoint,
@@ -164,8 +172,29 @@ class SwsReportService {
           message: map['message']?.toString() ?? 'Report request failed.',
         );
       }
-      return [map];
+      final nested = map['data'];
+      if (nested is List) {
+        return nested
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+      }
+      if (_looksLikeBeneficiaryRow(map)) return [map];
+      return [];
     }
     return [];
+  }
+
+  static bool _looksLikeBeneficiaryRow(Map<String, dynamic> map) {
+    for (final key in map.keys) {
+      final upper = key.toUpperCase();
+      if (upper == 'MEMBERNAME' ||
+          upper == 'MEMBERID' ||
+          upper == 'MEMBER_NAME' ||
+          upper == 'MEMBER_ID') {
+        return true;
+      }
+    }
+    return false;
   }
 }

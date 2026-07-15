@@ -77,8 +77,10 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
           else if (_error != null)
             DataScreenStates.error(context: context, message: _error!, onRetry: _load)
           else ...[
+            _QuickActions(),
+            const SizedBox(height: 24),
             StatSection(
-              titleEn: 'Status of Services',
+              titleEn: 'Service Status',
               titleHi: 'सेवा स्थिति',
               cards: [
                 StatCardData(
@@ -93,31 +95,16 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
                 ),
                 StatCardData(
                   labelEn: 'Total Services Availed',
-                  labelHi: 'अवश्य सेवाएं',
+                  labelHi: 'कुल प्राप्त सेवाएं',
                   value: '${_counts.availedCount}',
                   icon: Icons.person_add_alt_1_outlined,
                   color: Colors.green.shade700,
                   bgColor: Colors.green.shade50,
                   barColor: Colors.green.shade500,
+                  onTap: CitizenNavigation.instance.goToAvailedServices,
                 ),
                 StatCardData(
-                  labelEn: 'Opt-out Services',
-                  labelHi: 'ऑप्ट-आउट सेवाएं',
-                  value: '${_counts.optOutCount}',
-                  icon: Icons.cancel_outlined,
-                  color: Colors.red.shade700,
-                  bgColor: Colors.red.shade50,
-                  barColor: Colors.red.shade400,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            StatSection(
-              titleEn: 'Status of Consents',
-              titleHi: 'सहमति स्थिति',
-              cards: [
-                StatCardData(
-                  labelEn: 'Total Consent Submitted',
+                  labelEn: 'Total Consents Submitted',
                   labelHi: 'कुल सहमति जमा',
                   value: '${_counts.consentCount}',
                   icon: Icons.collections_bookmark_outlined,
@@ -131,6 +118,71 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    AppLocaleScope.watch(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.l('Quick Actions', 'त्वरित क्रियाएं'),
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: kText,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _QuickActionChip(
+              icon: Icons.fact_check_outlined,
+              label: context.l('Provide Consent', 'सहमति दें'),
+              onTap: CitizenNavigation.instance.goToProvideConsent,
+            ),
+            _QuickActionChip(
+              icon: Icons.playlist_add_check_outlined,
+              label: context.l('Availed Services', 'प्राप्त सेवाएं'),
+              onTap: CitizenNavigation.instance.goToAvailedServices,
+            ),
+            _QuickActionChip(
+              icon: Icons.collections_bookmark_outlined,
+              label: context.l('View Consent', 'सहमति देखें'),
+              onTap: CitizenNavigation.instance.goToViewConsents,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickActionChip extends StatelessWidget {
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: Icon(icon, size: 18, color: kCitizenOrange),
+      label: Text(label),
+      onPressed: onTap,
+      side: const BorderSide(color: kBorder),
+      backgroundColor: Colors.white,
     );
   }
 }

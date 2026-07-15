@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
@@ -20,6 +22,10 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic> _data = const {};
+  String? _loadedDeptId;
+  var _loadGeneration = 0;
+  var _loadInFlight = false;
+  Timer? _roleDebounce;
 
   @override
   void initState() {
@@ -30,52 +36,109 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
 
   @override
   void dispose() {
+    _roleDebounce?.cancel();
     RoleContext.instance.removeListener(_onRoleChanged);
     super.dispose();
   }
 
   void _onRoleChanged() {
     if (!mounted) return;
-    _load();
+    final deptId = RoleContext.instance.selectedDeptId;
+    if (deptId == _loadedDeptId && !_loading) return;
+    _roleDebounce?.cancel();
+    _roleDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (mounted) _load();
+    });
   }
 
   Future<void> _load() async {
-    await RoleContext.instance.syncDepartmentFromMappedList();
-    final deptId = RoleContext.instance.selectedDeptId;
-    if (deptId == null || deptId == '0') {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
+    final generation = ++_loadGeneration;
+
+    if (mounted) {
       setState(() {
-        _loading = false;
+        _loading = true;
         _error = null;
-        _data = const {};
       });
-      return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
     try {
+      await RoleContext.instance.syncDepartmentFromMappedList();
+      final deptId = RoleContext.instance.selectedDeptId;
+
+      if (deptId == null || deptId == '0') {
+        if (!mounted || generation != _loadGeneration) return;
+        setState(() {
+          _data = const {};
+          _loadedDeptId = null;
+          _loading = false;
+          _error = null;
+        });
+        return;
+      }
+
       final data = DashboardService.unwrapDashboardData(
         await DashboardService.instance.fetchDepartmentCounts(
           departmentId: deptId,
         ),
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _data = data;
+        _loadedDeptId = deptId;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
+        _data = const {};
         _error = ApiErrorUtil.friendlyMessage(e);
         _loading = false;
       });
+    } finally {
+      _loadInFlight = false;
     }
   }
 
   String _val(String key) => DashboardService.stringValue(_data, key);
+
+  Widget _kpiSection() {
+    return StatSection(
+      titleEn: 'Overview',
+      titleHi: 'अवलोकन',
+      cards: [
+        StatCardData(
+          labelEn: 'Total Schemes & Services',
+          labelHi: 'कुल योजनाएं और सेवाएं',
+          value: _val('TOTAL_SERVICE'),
+          icon: Icons.list_alt_outlined,
+          color: Colors.indigo.shade700,
+          bgColor: Colors.indigo.shade50,
+          barColor: Colors.indigo.shade500,
+        ),
+        StatCardData(
+          labelEn: 'Total Beneficiaries',
+          labelHi: 'कुल लाभार्थी',
+          value: _val('TOTAL_BENEFICIARY'),
+          icon: Icons.groups_outlined,
+          color: Colors.orange.shade700,
+          bgColor: Colors.orange.shade50,
+          barColor: Colors.orange.shade500,
+        ),
+        StatCardData(
+          labelEn: 'Unique Beneficiaries',
+          labelHi: 'अद्वितीय लाभार्थी',
+          value: _val('UNIQUE_BENEFICIARY'),
+          icon: Icons.person_search_outlined,
+          color: Colors.teal.shade700,
+          bgColor: Colors.teal.shade50,
+          barColor: Colors.teal.shade500,
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,49 +166,17 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
           const Divider(height: 24),
           if (_loading)
             DataScreenStates.loading()
-          else if (RoleContext.instance.selectedDeptId == null)
-            DataScreenStates.empty(
-              message: context.l(
-                'Select a department to view dashboard counts.',
-                'डैशबोर्ड गिनती देखने के लिए विभाग चुनें।',
+          else ...[
+            if (_error != null) ...[
+              DataScreenStates.error(
+                context: context,
+                message: _error!,
+                onRetry: _load,
               ),
-            )
-          else if (_error != null)
-            DataScreenStates.error(context: context, message: _error!, onRetry: _load)
-          else
-            StatSection(
-              titleEn: 'Overview',
-              titleHi: 'अवलोकन',
-              cards: [
-                StatCardData(
-                  labelEn: 'Total Services',
-                  labelHi: 'कुल सेवाएं',
-                  value: _val('TOTAL_SERVICE'),
-                  icon: Icons.list_alt_outlined,
-                  color: Colors.indigo.shade700,
-                  bgColor: Colors.indigo.shade50,
-                  barColor: Colors.indigo.shade500,
-                ),
-                StatCardData(
-                  labelEn: 'Total Beneficiaries',
-                  labelHi: 'कुल लाभार्थी',
-                  value: _val('TOTAL_BENEFICIARY'),
-                  icon: Icons.groups_outlined,
-                  color: Colors.orange.shade700,
-                  bgColor: Colors.orange.shade50,
-                  barColor: Colors.orange.shade500,
-                ),
-                StatCardData(
-                  labelEn: 'Unique Beneficiaries',
-                  labelHi: 'अद्वितीय लाभार्थी',
-                  value: _val('UNIQUE_BENEFICIARY'),
-                  icon: Icons.person_search_outlined,
-                  color: Colors.teal.shade700,
-                  bgColor: Colors.teal.shade50,
-                  barColor: Colors.teal.shade500,
-                ),
-              ],
-            ),
+              const SizedBox(height: 16),
+            ],
+            _kpiSection(),
+          ],
         ],
       ),
     );
