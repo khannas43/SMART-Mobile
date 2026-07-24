@@ -4,6 +4,7 @@ import '../../core/app_logger.dart';
 import '../../models/report_models.dart';
 import '../api_exception.dart';
 import '../next_query_client.dart';
+import '../role/role_context.dart';
 import '../smart_api_client.dart';
 
 /// Web-style hierarchical report API calls (UAT /department/report).
@@ -17,15 +18,29 @@ class SwsReportService {
 
   static final _deptOptions = Options(extra: {'roleHeader': 'DEPARTMENT'});
 
-  Future<List<ServiceOption>> fetchServices() async {
+  /// Active services for the selected department (plus synthetic All).
+  Future<List<ServiceOption>> fetchServices({String? departmentId}) async {
+    final deptId = (departmentId ?? RoleContext.instance.selectedDeptId)?.trim();
+    final andFilters = <Map<String, dynamic>>[
+      {'field': 'serviceCurrentStatus', 'op': '=', 'value': 'ACTIVE'},
+    ];
+    // Match web department scheme pages: scope ServiceRegistration by departmentId.
+    // Skip filter for empty / 0 / 5 (backend treats those as "all departments").
+    if (deptId != null &&
+        deptId.isNotEmpty &&
+        deptId != '0' &&
+        deptId != '5') {
+      andFilters.add({
+        'field': 'departmentId',
+        'op': '=',
+        'value': int.tryParse(deptId) ?? deptId,
+      });
+    }
+
     final result = await _nextQuery.list(
       model: 'ServiceRegistration',
-      fields: 'id,serviceId,serviceName',
-      filters: {
-        'and': [
-          {'field': 'serviceCurrentStatus', 'op': '=', 'value': 'ACTIVE'},
-        ],
-      },
+      fields: 'id,serviceId,serviceName,serviceNameHi,departmentId',
+      filters: {'and': andFilters},
       size: 500,
       roleHeader: 'DEPARTMENT',
     );
@@ -35,9 +50,55 @@ class SwsReportService {
         .toList();
 
     return [
-      const ServiceOption(serviceId: '1000', serviceName: 'All'),
+      const ServiceOption(
+        serviceId: '1000',
+        serviceName: 'All',
+        serviceNameHi: 'सभी',
+      ),
       ...services,
     ];
+  }
+
+  /// Optional district EN/HI lookup for locale-aware district titles.
+  Future<Map<String, ({String en, String hi})>> fetchDistrictNameLookup() async {
+    try {
+      final result = await _nextQuery.list(
+        model: 'DistrictMaster',
+        fields: 'districtId,districtEng',
+        size: 500,
+        roleHeader: 'DEPARTMENT',
+      );
+      final map = <String, ({String en, String hi})>{};
+      for (final row in result.rows) {
+        final id = pickReportField(row, const [
+          'districtId',
+          'DISTRICT_ID',
+          'id',
+          'ID',
+        ]);
+        if (id.isEmpty) continue;
+        final en = pickReportField(row, const [
+          'districtEng',
+          'DISTRICT_ENG',
+          'districtName',
+          'DISTRICT_NAME_EN',
+          'DISTRICT_NAME',
+        ]);
+        final hi = pickReportField(row, const [
+          'districtHin',
+          'DISTRICT_HIN',
+          'districtNameHi',
+          'DISTRICT_NAME_HI',
+          'districtHindi',
+        ]);
+        if (en.isEmpty && hi.isEmpty) continue;
+        map[id] = (en: en, hi: hi);
+      }
+      return map;
+    } catch (e) {
+      AppLogger.d('SwsReport', 'DistrictMaster lookup skipped: $e');
+      return const {};
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchAllServiceCounts(

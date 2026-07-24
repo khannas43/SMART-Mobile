@@ -11,16 +11,25 @@ class ReportBreadcrumb extends StatelessWidget {
     required this.onResetAll,
     required this.onResetToService,
     required this.onResetToDistrict,
+    this.servicesById = const {},
   });
 
   final ReportFilterState filters;
   final VoidCallback onResetAll;
   final VoidCallback onResetToService;
   final VoidCallback onResetToDistrict;
+  final Map<String, ServiceOption> servicesById;
 
   @override
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
+    final serviceLabel = localizedServiceLabel(
+      context,
+      serviceId: filters.serviceId,
+      fallbackEn: filters.serviceName,
+      fallbackHi: filters.serviceNameHi,
+      byId: servicesById,
+    );
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 4,
@@ -28,19 +37,25 @@ class ReportBreadcrumb extends StatelessWidget {
         _Link(context.l('Reports', 'रिपोर्ट'), onResetAll),
         if (filters.hasService) ...[
           const Text('/', style: TextStyle(color: kMuted)),
-          _Link(filters.serviceName, onResetToService),
+          _Link(serviceLabel, onResetToService),
         ],
         if (filters.hasDistrict) ...[
           const Text('/', style: TextStyle(color: kMuted)),
-          _Link(filters.districtName!, onResetToDistrict),
+          _Link(filters.localizedDistrictName(context), onResetToDistrict),
         ],
         if (filters.selectedRural != null) ...[
           const Text('/', style: TextStyle(color: kMuted)),
-          Text(filters.selectedRural!, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(
+            filters.localizedSelectedRural(context),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ],
         if (filters.hasBlock) ...[
           const Text('/', style: TextStyle(color: kMuted)),
-          Text(filters.blockName!, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(
+            filters.localizedBlockName(context),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ],
       ],
     );

@@ -47,17 +47,17 @@ void main() {
       expect(filters.drillLevel, ReportDrillLevel.blocks);
     });
 
-    test('beneficiaries after urban selected (skips blocks)', () {
+    test('urban stays at ruralUrban (no beneficiary drill)', () {
       final filters = base.copyWith(
         districtId: '1',
         districtName: 'Jaipur',
         selectedRural: 'Urban',
         selectedRuralId: 0,
       );
-      expect(filters.drillLevel, ReportDrillLevel.beneficiaries);
+      expect(filters.drillLevel, ReportDrillLevel.ruralUrban);
     });
 
-    test('beneficiaries after rural block selected', () {
+    test('block id does not open beneficiaries — stays on blocks', () {
       final filters = base.copyWith(
         districtId: '1',
         districtName: 'Jaipur',
@@ -66,7 +66,7 @@ void main() {
         blockId: '99',
         blockName: 'Block A',
       );
-      expect(filters.drillLevel, ReportDrillLevel.beneficiaries);
+      expect(filters.drillLevel, ReportDrillLevel.blocks);
     });
   });
 }

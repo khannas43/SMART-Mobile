@@ -33,12 +33,12 @@ class CitizenNavigation extends ChangeNotifier {
   /// Opens consent management as a pushed screen (web dashboard entry pattern).
   void goToProvideConsent() {
     _pendingConsentSection = ConsentSection.provide;
-    _openConsentScreen();
+    _openConsentScreen(ConsentSection.provide);
   }
 
   void goToViewConsents() {
     _pendingConsentSection = ConsentSection.view;
-    _openConsentScreen();
+    _openConsentScreen(ConsentSection.view);
   }
 
   void goToAvailedServices() {
@@ -54,12 +54,14 @@ class CitizenNavigation extends ChangeNotifier {
     );
   }
 
-  void _openConsentScreen() {
+  void _openConsentScreen(ConsentSection initialSection) {
     final nav = gNavigatorKey.currentState;
     if (nav == null) {
       notifyListeners();
       return;
     }
+    // Consume pending so listeners do not re-apply stale section.
+    _pendingConsentSection = null;
     nav.push(
       MaterialPageRoute<void>(
         builder: (context) {
@@ -79,7 +81,7 @@ class CitizenNavigation extends ChangeNotifier {
                 child: Container(height: 3, color: kCitizenOrange),
               ),
             ),
-            body: const CitizenConsentScreen(),
+            body: CitizenConsentScreen(initialSection: initialSection),
           );
         },
       ),

@@ -86,11 +86,12 @@ class _RoleShellState extends State<RoleShell> {
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
 
-    Widget shell(String? subtitle) {
+    Widget shell({bool showDepartmentSwitcher = false, String? subtitle}) {
       return Scaffold(
         appBar: AppHeader(
           panel: widget.panel,
           subtitle: subtitle,
+          showDepartmentSwitcher: showDepartmentSwitcher,
           onLogout: _loggingOut ? null : _logout,
           onPanelChanged: () => setState(() {}),
         ),
@@ -120,16 +121,21 @@ class _RoleShellState extends State<RoleShell> {
       );
     }
 
-    if (widget.useDepartmentHeaderSubtitle) {
+    if (widget.useDepartmentHeaderSubtitle &&
+        widget.panel == SmartPanel.department) {
       return ListenableBuilder(
         listenable: RoleContext.instance,
         builder: (context, _) {
-          final name = RoleContext.instance.selectedDeptName?.trim();
-          return shell(name != null && name.isNotEmpty ? name : null);
+          final hasDeptRole = RoleContext.instance.availablePanels
+              .contains(SmartPanel.department);
+          if (!hasDeptRole) {
+            return shell();
+          }
+          return shell(showDepartmentSwitcher: true);
         },
       );
     }
 
-    return shell(widget.headerSubtitle);
+    return shell(subtitle: widget.headerSubtitle);
   }
 }

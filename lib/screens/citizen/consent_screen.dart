@@ -10,15 +10,22 @@ import '../../widgets/consent/consent_list_table.dart';
 import '../../widgets/consent/scheme_verification_sheet.dart';
 import '../../widgets/data_screen_states.dart';
 
+/// Consent management with Provide / View tabs (web eligibleSchemes + viewConsent).
 class CitizenConsentScreen extends StatefulWidget {
-  const CitizenConsentScreen({super.key});
+  const CitizenConsentScreen({
+    super.key,
+    this.initialSection = ConsentSection.provide,
+  });
+
+  final ConsentSection initialSection;
 
   @override
   State<CitizenConsentScreen> createState() => _CitizenConsentScreenState();
 }
 
-class _CitizenConsentScreenState extends State<CitizenConsentScreen> {
-  final _scrollController = ScrollController();
+class _CitizenConsentScreenState extends State<CitizenConsentScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   var _viewPage = 1;
   var _viewLoading = true;
   var _eligibleLoading = true;
@@ -31,37 +38,36 @@ class _CitizenConsentScreenState extends State<CitizenConsentScreen> {
   @override
   void initState() {
     super.initState();
-    CitizenNavigation.instance.addListener(_onNavigation);
-    _loadAll();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _applyNavigationFocus());
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialSection == ConsentSection.view ? 1 : 0,
+    );
+    _tabController.addListener(_onTabChanged);
+    _loadForCurrentTab();
   }
 
   @override
   void dispose() {
-    CitizenNavigation.instance.removeListener(_onNavigation);
-    _scrollController.dispose();
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
     super.dispose();
   }
 
-  void _onNavigation() {
-    if (!mounted) return;
-    _applyNavigationFocus();
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    _loadForCurrentTab();
   }
 
-  void _applyNavigationFocus() {
-    final section = CitizenNavigation.instance.consumePendingConsentSection();
-    if (section == ConsentSection.view) {
-      _scrollController.animateTo(
-        400,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+  Future<void> _loadForCurrentTab() async {
+    if (_tabController.index == 0) {
+      await _loadEligible();
+    } else {
+      await _loadView();
     }
   }
 
-  Future<void> _loadAll() async {
-    await Future.wait([_loadEligible(), _loadView()]);
-  }
+  Future<void> _refreshCurrentTab() => _loadForCurrentTab();
 
   Future<void> _loadEligible() async {
     setState(() {
@@ -110,105 +116,157 @@ class _CitizenConsentScreenState extends State<CitizenConsentScreen> {
     await SchemeVerificationSheet.show(
       context,
       eligibleRow: row,
-      onSuccess: _loadAll,
+      onSuccess: () async {
+        await _loadEligible();
+        await _loadView();
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
-    return RefreshIndicator(
-      onRefresh: _loadAll,
-      color: kCitizenOrange,
-      child: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
-        children: [
-          _sectionTitle(
-            context.l('Provide Consent', 'सहमति प्रदान करें'),
-            Icons.add_task_outlined,
+    return Column(
+      children: [
+        Material(
+          color: Colors.white,
+          child: TabBar(
+            controller: _tabController,
+            labelColor: kCitizenOrange,
+            unselectedLabelColor: kMuted,
+            indicatorColor: kCitizenOrange,
+            tabs: [
+              Tab(text: context.l('Provide Consent', 'सहमति प्रदान करें')),
+              Tab(text: context.l('View Consent', 'सहमति देखें')),
+            ],
           ),
-          const SizedBox(height: 8),
-          if (_eligibleLoading)
-            DataScreenStates.loading()
-          else if (_eligibleError != null)
-            DataScreenStates.error(
-              context: context,
-              message: _eligibleError!,
-              onRetry: _loadEligible,
-            )
-          else if (_eligibleRows.isEmpty)
-            DataScreenStates.empty(
-              message: context.l(
-                'No eligible services found.',
-                'कोई पात्र सेवा नहीं मिली।',
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              RefreshIndicator(
+                onRefresh: _loadEligible,
+                color: kCitizenOrange,
+                child: _buildProvideTab(context),
               ),
-            )
-          else
-            ..._eligibleRows.map((row) => _EligibleCard(
-                  row: row,
-                  onAvail: () => _openProvideConsent(row),
-                )),
-          const SizedBox(height: 24),
-          _sectionTitle(
-            context.l('View All Consents', 'सभी सहमतियाँ देखें'),
-            Icons.fact_check_outlined,
+              RefreshIndicator(
+                onRefresh: _refreshCurrentTab,
+                color: kCitizenOrange,
+                child: _buildViewTab(context),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          if (_viewLoading && _viewRows.isEmpty)
-            DataScreenStates.loading()
-          else if (_viewError != null)
-            DataScreenStates.error(
-              context: context,
-              message: _viewError!,
-              onRetry: _loadView,
-            )
-          else if (_viewRows.isEmpty)
-            DataScreenStates.empty(
-              message: context.l(
-                'No consent records found.',
-                'कोई सहमति रिकॉर्ड नहीं मिला।',
-              ),
-            )
-          else
-            ConsentListTable(
-              rows: _viewRows,
-              page: _viewPage,
-              pageSize: ConsentService.pageSize,
-              total: _viewTotal,
-              loading: _viewLoading,
-              onPrev: _viewPage > 1
-                  ? () {
-                      setState(() => _viewPage--);
-                      _loadView();
-                    }
-                  : null,
-              onNext: _viewPage * ConsentService.pageSize < _viewTotal
-                  ? () {
-                      setState(() => _viewPage++);
-                      _loadView();
-                    }
-                  : null,
-            ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _sectionTitle(String title, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: kCitizenOrange),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: kText,
+  Widget _buildProvideTab(BuildContext context) {
+    if (_eligibleLoading) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [DataScreenStates.loading()],
+      );
+    }
+    if (_eligibleError != null) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          DataScreenStates.error(
+            context: context,
+            message: _eligibleError!,
+            onRetry: _loadEligible,
+          ),
+        ],
+      );
+    }
+    if (_eligibleRows.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          DataScreenStates.empty(
+            message: context.l(
+              'No eligible services found.',
+              'कोई पात्र सेवा नहीं मिली।',
             ),
           ),
+        ],
+      );
+    }
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final row in _eligibleRows)
+          _EligibleCard(
+            row: row,
+            onAvail: () => _openProvideConsent(row),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildViewTab(BuildContext context) {
+    if (_viewLoading && _viewRows.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [DataScreenStates.loading()],
+      );
+    }
+    if (_viewError != null) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          DataScreenStates.error(
+            context: context,
+            message: _viewError!,
+            onRetry: _loadView,
+          ),
+        ],
+      );
+    }
+    if (_viewRows.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          DataScreenStates.empty(
+            message: context.l(
+              'No consent records found.',
+              'कोई सहमति रिकॉर्ड नहीं मिला।',
+            ),
+          ),
+        ],
+      );
+    }
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        ConsentListTable(
+          rows: _viewRows,
+          page: _viewPage,
+          pageSize: ConsentService.pageSize,
+          total: _viewTotal,
+          loading: _viewLoading,
+          onPrev: _viewPage > 1
+              ? () {
+                  setState(() => _viewPage--);
+                  _loadView();
+                }
+              : null,
+          onNext: _viewPage * ConsentService.pageSize < _viewTotal
+              ? () {
+                  setState(() => _viewPage++);
+                  _loadView();
+                }
+              : null,
         ),
       ],
     );

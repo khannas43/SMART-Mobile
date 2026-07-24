@@ -8,7 +8,7 @@ class ReportFilterCard extends StatelessWidget {
   const ReportFilterCard({
     super.key,
     required this.services,
-    required this.filters,
+    required this.pendingServiceId,
     required this.tempFrom,
     required this.tempTo,
     required this.onServiceChanged,
@@ -21,7 +21,8 @@ class ReportFilterCard extends StatelessWidget {
   });
 
   final List<ServiceOption> services;
-  final ReportFilterState filters;
+  /// Pending (not yet submitted) service selection — same pattern as temp dates.
+  final String pendingServiceId;
   final DateTime? tempFrom;
   final DateTime? tempTo;
   final ValueChanged<ServiceOption?> onServiceChanged;
@@ -40,6 +41,10 @@ class ReportFilterCard extends StatelessWidget {
       return '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
     }
 
+    final selectedId = services.any((s) => s.serviceId == pendingServiceId)
+        ? pendingServiceId
+        : (services.isNotEmpty ? services.first.serviceId : null);
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -54,9 +59,7 @@ class ReportFilterCard extends StatelessWidget {
             DropdownButtonFormField<String>(
               isExpanded: true,
               menuMaxHeight: 280,
-              value: services.any((s) => s.serviceId == filters.serviceId)
-                  ? filters.serviceId
-                  : (services.isNotEmpty ? services.first.serviceId : null),
+              value: selectedId,
               decoration: InputDecoration(
                 labelText: context.l('Service Name', 'सेवा का नाम'),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -67,7 +70,7 @@ class ReportFilterCard extends StatelessWidget {
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      s.serviceName,
+                      s.localizedName(context),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       softWrap: false,
@@ -80,7 +83,7 @@ class ReportFilterCard extends StatelessWidget {
                     (s) => DropdownMenuItem(
                       value: s.serviceId,
                       child: Text(
-                        s.serviceName,
+                        s.localizedName(context),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         softWrap: true,

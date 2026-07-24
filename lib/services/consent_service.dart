@@ -40,9 +40,10 @@ class ConsentService {
     final result = await _nextQuery.listCount(
       model: 'CitizenServiceConsent',
       fields: _fields,
+      // Match web ConsentList: consents are stored with consenterJaMemberId.
       filters: {
         'and': [
-          {'field': 'consenterSmCitizenId', 'op': '=', 'value': smUserId},
+          {'field': 'consenterJaMemberId', 'op': '=', 'value': smUserId},
         ],
       },
       page: page,

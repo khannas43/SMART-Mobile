@@ -53,7 +53,11 @@ class _RoleSwitcherState extends State<RoleSwitcher> {
             final picked = await DeptPickerDialog.show(context, depts);
             if (picked == null) return;
             await roleCtx.switchPanel(SmartPanel.department);
-            await roleCtx.setDepartment(id: picked.id, name: picked.name);
+            await roleCtx.setDepartment(
+              id: picked.id,
+              name: picked.nameEn,
+              nameHi: picked.nameHi,
+            );
           } else {
             await roleCtx.switchPanel(SmartPanel.department);
             await roleCtx.syncDepartmentFromMappedList();
@@ -62,7 +66,8 @@ class _RoleSwitcherState extends State<RoleSwitcher> {
           await roleCtx.switchPanel(panel);
           await roleCtx.setDepartment(
             id: depts.first.id,
-            name: depts.first.name,
+            name: depts.first.nameEn,
+            nameHi: depts.first.nameHi,
           );
         }
       } else {

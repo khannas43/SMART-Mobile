@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app_theme.dart';
+import '../../config/env.dart';
 import '../../core/app_logger.dart';
 import '../../i18n/app_locale.dart';
 import '../../models/user_role.dart';
 import '../../services/api_error_util.dart';
-import '../../services/api_exception.dart';
 import '../../services/dashboard/dashboard_service.dart';
+import '../../services/role/department_service.dart';
 import '../../services/role/role_context.dart';
 import '../../widgets/data_screen_states.dart';
 import '../../widgets/shell/stat_card.dart';
@@ -24,10 +25,10 @@ class DepartmentDashboardScreen extends StatefulWidget {
 class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
   bool _loading = true;
   String? _error;
+  String? _selectDeptHint;
   Map<String, dynamic> _data = const {};
   String? _loadedDeptId;
   var _loadGeneration = 0;
-  var _loadInFlight = false;
   Timer? _roleDebounce;
 
   @override
@@ -50,7 +51,13 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
     // (panel switch would otherwise surface a spurious "Invalid Request").
     if (RoleContext.instance.activePanel != SmartPanel.department) return;
     final deptId = RoleContext.instance.selectedDeptId;
-    if (deptId == _loadedDeptId && !_loading) return;
+    // Reload when dept changes, or when a prior load failed (_loadedDeptId null).
+    if (deptId != null &&
+        deptId == _loadedDeptId &&
+        !_loading &&
+        _error == null) {
+      return;
+    }
     _roleDebounce?.cancel();
     _roleDebounce = Timer(const Duration(milliseconds: 200), () {
       if (mounted) _load();
@@ -58,71 +65,109 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
   }
 
   Future<void> _load() async {
-    if (_loadInFlight) return;
     if (RoleContext.instance.activePanel != SmartPanel.department) return;
-    _loadInFlight = true;
     final generation = ++_loadGeneration;
 
     if (mounted) {
       setState(() {
         _loading = true;
         _error = null;
+        _selectDeptHint = null;
       });
     }
 
     try {
-      await RoleContext.instance.syncDepartmentFromMappedList();
+      // Gate on MappedDeptWithRole id — same source as web getSelectedDeptId().
+      final mapped = await DepartmentService.instance.resolveForDashboard(
+        selectedDeptId: RoleContext.instance.selectedDeptId,
+      );
+      if (!mounted || generation != _loadGeneration) return;
       if (RoleContext.instance.activePanel != SmartPanel.department) return;
-      final deptId = RoleContext.instance.selectedDeptId;
 
-      if (deptId == null || deptId == '0') {
-        if (!mounted || generation != _loadGeneration) return;
+      if (mapped == null) {
+        final preferred = RoleContext.instance.selectedDeptId;
+        AppLogger.d(
+          'DepartmentDashboard',
+          'No mapped dept for commonId '
+          '(preferred=$preferred, env=${Env.baseUrl})',
+        );
         setState(() {
           _data = const {};
           _loadedDeptId = null;
           _loading = false;
           _error = null;
+          _selectDeptHint = preferred == null || preferred == '0'
+              ? context.l(
+                  'Select a department to view dashboard counts.',
+                  'डैशबोर्ड गणना देखने के लिए विभाग चुनें।',
+                )
+              : context.l(
+                  'Selected department is not in your mapped list. Switch department and try again.',
+                  'चयनित विभाग आपकी मैप सूची में नहीं है। विभाग बदलकर पुनः प्रयास करें।',
+                );
         });
         return;
       }
 
-      final data = DashboardService.unwrapDashboardData(
-        await DashboardService.instance.fetchDepartmentCounts(
-          departmentId: deptId,
-        ),
+      if (RoleContext.instance.selectedDeptId != mapped.id ||
+          RoleContext.instance.selectedDeptName != mapped.nameEn ||
+          (RoleContext.instance.selectedDeptNameHi ?? '') != mapped.nameHi) {
+        await RoleContext.instance.setDepartment(
+          id: mapped.id,
+          name: mapped.nameEn,
+          nameHi: mapped.nameHi,
+        );
+      }
+      if (!mounted || generation != _loadGeneration) return;
+
+      final deptId = mapped.id;
+      AppLogger.d(
+        'DepartmentDashboard',
+        'Fetching counts commonId=$deptId env=${Env.baseUrl}',
       );
+
+      final raw = await DashboardService.instance.fetchDepartmentCounts(
+        departmentId: deptId,
+      );
+      AppLogger.d(
+        'DepartmentDashboard',
+        'commonDashboardCount response keys=${raw.keys.toList()} '
+        'TOTAL_SERVICE=${raw['TOTAL_SERVICE']} '
+        'TOTAL_BENEFICIARY=${raw['TOTAL_BENEFICIARY']} '
+        'UNIQUE_BENEFICIARY=${raw['UNIQUE_BENEFICIARY']}',
+      );
+
+      final data = DashboardService.unwrapDashboardData(raw);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _data = data;
         _loadedDeptId = deptId;
         _loading = false;
         _error = null;
+        _selectDeptHint = null;
       });
     } catch (e) {
       AppLogger.e(
         'DepartmentDashboard',
-        'commonDashboardCount failed (deptId=${RoleContext.instance.selectedDeptId})',
+        'commonDashboardCount failed '
+        '(deptId=${RoleContext.instance.selectedDeptId}, env=${Env.baseUrl})',
         e,
       );
       if (!mounted || generation != _loadGeneration) return;
-      // Never show raw "Internal Server Error"; always keep KPI cards at 0.
       final api = ApiErrorUtil.asApiException(e);
-      final hideBanner = api.kind == ApiErrorKind.server ||
-          api.message == ApiException.serverErrorMessage ||
-          (api.statusCode != null && api.statusCode! >= 500);
       setState(() {
         _data = const {};
-        _loadedDeptId = RoleContext.instance.selectedDeptId;
-        _error = hideBanner
-            ? null
+        // Allow retry on same dept after failure (do not stick _loadedDeptId).
+        _loadedDeptId = null;
+        _selectDeptHint = null;
+        _error = api.message.isNotEmpty
+            ? api.message
             : context.l(
-                'Unable to load dashboard counts. Showing zeros.',
-                'डैशबोर्ड गणना लोड नहीं हो सकी। शून्य दिखाए जा रहे हैं।',
+                'Unable to load dashboard counts. Please retry.',
+                'डैशबोर्ड गणना लोड नहीं हो सकी। कृपया पुनः प्रयास करें।',
               );
         _loading = false;
       });
-    } finally {
-      _loadInFlight = false;
     }
   }
 
@@ -167,7 +212,11 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     AppLocaleScope.watch(context);
-    final deptName = RoleContext.instance.selectedDeptName;
+    final roleCtx = RoleContext.instance;
+    final deptName = context.lb(
+      roleCtx.selectedDeptName ?? '',
+      roleCtx.selectedDeptNameHi ?? roleCtx.selectedDeptName ?? '',
+    );
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -199,7 +248,16 @@ class _DepartmentDashboardScreenState extends State<DepartmentDashboardScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            _kpiSection(),
+            if (_selectDeptHint != null) ...[
+              DataScreenStates.error(
+                context: context,
+                message: _selectDeptHint!,
+                onRetry: _load,
+              ),
+              const SizedBox(height: 16),
+            ],
+            // Show KPI cards only after a successful load (or with zeros from API).
+            if (_error == null && _selectDeptHint == null) _kpiSection(),
           ],
         ],
       ),
