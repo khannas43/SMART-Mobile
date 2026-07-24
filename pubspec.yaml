@@ -48,3 +48,7 @@ flutter:
     - assets/SMART_Mobile_Application_User_Manual_V1.0.pdf
     - assets/.well-known/assetlinks.json
     - assets/.well-known/assetlinks-uat.json
+  fonts:
+    - family: Noto Sans Devanagari
+      fonts:
+        - asset: assets/fonts/NotoSansDevanagari-Regular.ttf
