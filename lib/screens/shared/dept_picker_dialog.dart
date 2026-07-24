@@ -21,6 +21,7 @@ class DeptPickerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppLocaleScope.watch(context);
     return AlertDialog(
       title: Text(context.l('Select Department', 'विभाग चुनें')),
       content: SizedBox(
@@ -32,7 +33,7 @@ class DeptPickerDialog extends StatelessWidget {
           itemBuilder: (_, i) {
             final dept = departments[i];
             return ListTile(
-              title: Text(dept.name),
+              title: Text(dept.localizedName(context)),
               subtitle: Text(dept.id),
               onTap: () => Navigator.pop(context, dept),
             );

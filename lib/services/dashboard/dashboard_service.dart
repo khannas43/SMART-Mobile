@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
+import '../../core/app_logger.dart';
 import '../../models/citizen_dashboard_counts.dart';
-import '../api_exception.dart';
 import '../smart_api_service.dart';
 import '../smart_api_client.dart';
 
@@ -17,6 +18,9 @@ class DashboardService {
   Future<CitizenDashboardCounts> fetchCitizenCounts() =>
       _api.fetchCitizenDashboardCounts();
 
+  /// Department KPIs — same contract as web `department/page.tsx`:
+  /// `POST /api/dashboard/commonDashboardCount` with form fields
+  /// `commonId` (MappedDept id) + `userType=DEPARTMENT`.
   Future<Map<String, dynamic>> fetchDepartmentCounts({
     required String departmentId,
   }) async {
@@ -29,14 +33,23 @@ class DashboardService {
     }
 
     try {
+      // Match web FormData string fields (Spring @RequestParam binds either
+      // multipart or application/x-www-form-urlencoded).
       final response = await _client.postForm(
         '/api/dashboard/commonDashboardCount',
         data: {
-          'commonId': commonId,
+          'commonId': commonId.toString(),
           'userType': 'DEPARTMENT',
         },
         options: Options(extra: {'roleHeader': 'DEPARTMENT'}),
       );
+      if (kDebugMode) {
+        AppLogger.d(
+          'DashboardService',
+          'commonDashboardCount commonId=$commonId '
+          'status=${response.statusCode} bodyType=${response.data.runtimeType}',
+        );
+      }
       return _asMap(response.data);
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);

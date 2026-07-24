@@ -83,16 +83,7 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
               titleEn: 'Service Status',
               titleHi: 'सेवा स्थिति',
               cards: [
-                StatCardData(
-                  labelEn: 'Eligible Services',
-                  labelHi: 'पात्र सेवाएं',
-                  value: '${_counts.eligibleCount}',
-                  icon: Icons.check_circle_outline,
-                  color: Colors.blue.shade700,
-                  bgColor: Colors.blue.shade50,
-                  barColor: Colors.blue.shade500,
-                  onTap: CitizenNavigation.instance.goToProvideConsent,
-                ),
+                // Order matches web/citizen AC: Availed → Consents → Eligible.
                 StatCardData(
                   labelEn: 'Total Services Availed',
                   labelHi: 'कुल प्राप्त सेवाएं',
@@ -101,7 +92,6 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
                   color: Colors.green.shade700,
                   bgColor: Colors.green.shade50,
                   barColor: Colors.green.shade500,
-                  onTap: CitizenNavigation.instance.goToAvailedServices,
                 ),
                 StatCardData(
                   labelEn: 'Total Consents Submitted',
@@ -111,7 +101,15 @@ class _CitizenDashboardScreenState extends State<CitizenDashboardScreen> {
                   color: Colors.purple.shade700,
                   bgColor: Colors.purple.shade50,
                   barColor: Colors.purple.shade400,
-                  onTap: CitizenNavigation.instance.goToViewConsents,
+                ),
+                StatCardData(
+                  labelEn: 'Eligible Services',
+                  labelHi: 'पात्र सेवाएं',
+                  value: '${_counts.eligibleCount}',
+                  icon: Icons.check_circle_outline,
+                  color: Colors.blue.shade700,
+                  bgColor: Colors.blue.shade50,
+                  barColor: Colors.blue.shade500,
                 ),
               ],
             ),

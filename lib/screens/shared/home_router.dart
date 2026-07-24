@@ -137,10 +137,12 @@ class _HomeRouterState extends State<HomeRouter> {
         depts.any((d) => d.id == currentId);
     if (stillValid) {
       final match = depts.firstWhere((d) => d.id == currentId);
-      if (RoleContext.instance.selectedDeptName != match.name) {
+      if (RoleContext.instance.selectedDeptName != match.nameEn ||
+          (RoleContext.instance.selectedDeptNameHi ?? '') != match.nameHi) {
         await RoleContext.instance.setDepartment(
           id: match.id,
-          name: match.name,
+          name: match.nameEn,
+          nameHi: match.nameHi,
         );
       }
       return;
@@ -150,7 +152,8 @@ class _HomeRouterState extends State<HomeRouter> {
     if (depts.length == 1) {
       await RoleContext.instance.setDepartment(
         id: depts.first.id,
-        name: depts.first.name,
+        name: depts.first.nameEn,
+        nameHi: depts.first.nameHi,
       );
       return;
     }
@@ -163,7 +166,8 @@ class _HomeRouterState extends State<HomeRouter> {
     }
     await RoleContext.instance.setDepartment(
       id: picked.id,
-      name: picked.name,
+      name: picked.nameEn,
+      nameHi: picked.nameHi,
     );
   }
 
@@ -195,8 +199,17 @@ class _HomeRouterState extends State<HomeRouter> {
             Icons.menu_book_outlined,
           ],
           tabBuilder: (i) => switch (i) {
-              0 => const DepartmentDashboardScreen(),
-              1 => const ReportDrilldownScreen(),
+              // Remount dashboard when department changes so KPIs re-fetch.
+              0 => DepartmentDashboardScreen(
+                  key: ValueKey(
+                    'dept-dash-${RoleContext.instance.selectedDeptId ?? 'none'}',
+                  ),
+                ),
+              1 => ReportDrilldownScreen(
+                  key: ValueKey(
+                    'dept-reports-${RoleContext.instance.selectedDeptId ?? 'none'}',
+                  ),
+                ),
               _ => const CitizenUserManualScreen(),
             },
         ),

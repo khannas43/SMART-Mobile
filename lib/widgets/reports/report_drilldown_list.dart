@@ -11,12 +11,14 @@ class ReportDrilldownList extends StatelessWidget {
     required this.rows,
     required this.onRowTap,
     this.totalField = 'totalRecord',
+    this.servicesById = const {},
   });
 
   final ReportDrillLevel level;
   final List<Map<String, dynamic>> rows;
   final void Function(Map<String, dynamic> row) onRowTap;
   final String totalField;
+  final Map<String, ServiceOption> servicesById;
 
   @override
   Widget build(BuildContext context) {
@@ -39,8 +41,9 @@ class ReportDrilldownList extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         ...rows.map((row) {
-          final title = _str(row[titleKey]);
+          final title = _rowTitle(context, row, titleKey);
           final count = _num(row[valueKey]) ?? _num(row[totalField]) ?? 0;
+          final drillable = _isRowDrillable(row);
           return Card(
             elevation: 0,
             margin: const EdgeInsets.only(bottom: 8),
@@ -51,9 +54,10 @@ class ReportDrilldownList extends StatelessWidget {
             child: ListTile(
               title: Text(
                 title,
-                style: const TextStyle(
-                  color: kPrimaryRoyal,
-                  decoration: TextDecoration.underline,
+                style: TextStyle(
+                  color: drillable ? kPrimaryRoyal : kText,
+                  decoration:
+                      drillable ? TextDecoration.underline : TextDecoration.none,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -61,7 +65,7 @@ class ReportDrilldownList extends StatelessWidget {
                 count.toString(),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              onTap: () => onRowTap(row),
+              onTap: drillable ? () => onRowTap(row) : null,
             ),
           );
         }),
@@ -87,6 +91,49 @@ class ReportDrilldownList extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  String _rowTitle(
+    BuildContext context,
+    Map<String, dynamic> row,
+    String titleKey,
+  ) {
+    switch (level) {
+      case ReportDrillLevel.allServices:
+        final fromRow = localizedServiceTitleFromRow(context, row);
+        if (fromRow.isNotEmpty && fromRow != '—') return fromRow;
+        // Fallback to catalog if SP row lacks names.
+        final serviceId = _str(row['serviceId'] ?? row['SERVICE_ID']);
+        return localizedServiceLabel(
+          context,
+          serviceId: serviceId == '—' ? null : serviceId,
+          fallbackEn: _str(row[titleKey]),
+          byId: servicesById,
+        );
+      case ReportDrillLevel.districts:
+        final title = localizedDistrictTitleFromRow(context, row);
+        return title.isNotEmpty ? title : _str(row[titleKey]);
+      case ReportDrillLevel.ruralUrban:
+        final raw = areaRawFromRow(row);
+        return localizedAreaLabel(context, raw.isEmpty ? null : raw);
+      case ReportDrillLevel.blocks:
+        final title = localizedBlockTitleFromRow(context, row);
+        return title.isNotEmpty ? title : _str(row[titleKey]);
+      case ReportDrillLevel.beneficiaries:
+        return _str(row[titleKey]);
+    }
+  }
+
+  /// Urban area rows and all block rows are terminal (no beneficiary drill).
+  /// Detection uses raw API area fields — not localized display labels.
+  bool _isRowDrillable(Map<String, dynamic> row) {
+    if (level == ReportDrillLevel.blocks) return false;
+    if (level == ReportDrillLevel.beneficiaries) return false;
+    if (level == ReportDrillLevel.ruralUrban) {
+      // Rural → drill to block count; Urban → terminal (existing conditions).
+      return !isUrbanAreaValue(areaRawFromRow(row));
+    }
+    return true;
   }
 
   String _sectionTitle(BuildContext context, ReportDrillLevel level) =>

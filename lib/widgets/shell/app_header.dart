@@ -4,6 +4,7 @@ import '../../app_theme.dart';
 import '../../i18n/app_locale.dart';
 import '../../models/user_role.dart';
 import '../../services/auth_service.dart';
+import '../department_header_switcher.dart';
 import '../language_switcher.dart';
 import '../role_switcher.dart';
 
@@ -16,12 +17,16 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
     this.subtitle,
     this.onLogout,
     this.onPanelChanged,
+    this.showDepartmentSwitcher = false,
   });
 
   final SmartPanel panel;
   final String? subtitle;
   final VoidCallback? onLogout;
   final VoidCallback? onPanelChanged;
+
+  /// When true (Department panel + Department role), show dept name/dropdown.
+  final bool showDepartmentSwitcher;
 
   static const double _row1Height = 64;
   static const double _row2Height = 48;
@@ -84,7 +89,9 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                               softWrap: false,
                             ),
                           ),
-                          if (subtitle != null && subtitle!.isNotEmpty)
+                          if (showDepartmentSwitcher)
+                            const DepartmentHeaderSwitcher()
+                          else if (subtitle != null && subtitle!.isNotEmpty)
                             Text(
                               subtitle!,
                               style: const TextStyle(fontSize: 11, color: kMuted),

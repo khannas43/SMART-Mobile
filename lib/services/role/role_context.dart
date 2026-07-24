@@ -26,6 +26,7 @@ class RoleContext extends ChangeNotifier {
 
   static const _deptIdKey = 'smart_selected_dept_id';
   static const _deptNameKey = 'smart_selected_dept_name';
+  static const _deptNameHiKey = 'smart_selected_dept_name_hi';
   static const _panelKey = 'smart_active_panel';
 
   final FlutterSecureStorage _storage;
@@ -35,6 +36,7 @@ class RoleContext extends ChangeNotifier {
   SmartPanel? _activePanel;
   String? _selectedDeptId;
   String? _selectedDeptName;
+  String? _selectedDeptNameHi;
   ReportFilterState _reportFilter = ReportFilterState.defaultRange();
 
   List<SsoRoleMapping> get mappings => _mappings;
@@ -46,6 +48,8 @@ class RoleContext extends ChangeNotifier {
   String? get selectedDeptId => _selectedDeptId;
 
   String? get selectedDeptName => _selectedDeptName;
+
+  String? get selectedDeptNameHi => _selectedDeptNameHi;
 
   ReportFilterState get reportFilter => _reportFilter;
 
@@ -82,6 +86,7 @@ class RoleContext extends ChangeNotifier {
   Future<void> initialize() async {
     _selectedDeptId = await _storage.read(key: _deptIdKey);
     _selectedDeptName = await _storage.read(key: _deptNameKey);
+    _selectedDeptNameHi = await _storage.read(key: _deptNameHiKey);
     final savedPanel = await _storage.read(key: _panelKey);
     if (savedPanel != null && savedPanel != 'admin') {
       _activePanel = SmartPanel.values.firstWhere(
@@ -163,8 +168,10 @@ class RoleContext extends ChangeNotifier {
       if (panel != SmartPanel.department) {
         _selectedDeptId = null;
         _selectedDeptName = null;
+        _selectedDeptNameHi = null;
         await _storage.delete(key: _deptIdKey);
         await _storage.delete(key: _deptNameKey);
+        await _storage.delete(key: _deptNameHiKey);
       }
     }
 
@@ -180,12 +187,18 @@ class RoleContext extends ChangeNotifier {
   Future<void> setDepartment({
     required String id,
     required String name,
+    String? nameHi,
     SsoRoleMapping? mapping,
   }) async {
+    final changed = _selectedDeptId != id;
     _selectedDeptId = id;
     _selectedDeptName = name;
+    _selectedDeptNameHi = nameHi ?? _selectedDeptNameHi;
     await _storage.write(key: _deptIdKey, value: id);
     await _storage.write(key: _deptNameKey, value: name);
+    if (nameHi != null) {
+      await _storage.write(key: _deptNameHiKey, value: nameHi);
+    }
 
     if (mapping != null) {
       _activeMapping = mapping;
@@ -193,7 +206,14 @@ class RoleContext extends ChangeNotifier {
       final match = mappingsForPanel(SmartPanel.department).where(
         (m) => m.departmentId?.toString() == id,
       );
-      if (match.isNotEmpty) _activeMapping = match.first;
+      if (match.isNotEmpty) {
+        _activeMapping = match.first;
+      } else {
+        _syncActiveMapping();
+      }
+    }
+    if (changed) {
+      resetReportFilter();
     }
     notifyListeners();
   }
@@ -206,7 +226,8 @@ class RoleContext extends ChangeNotifier {
     if (resolved != null) {
       await setDepartment(
         id: resolved.id,
-        name: resolved.name,
+        name: resolved.nameEn,
+        nameHi: resolved.nameHi,
         mapping: mapping,
       );
       return;
@@ -216,24 +237,65 @@ class RoleContext extends ChangeNotifier {
     if (depts.length == 1) {
       await setDepartment(
         id: depts.first.id,
-        name: depts.first.name,
+        name: depts.first.nameEn,
+        nameHi: depts.first.nameHi,
         mapping: mapping,
       );
     }
   }
 
   /// Ensures [selectedDeptId] uses MappedDeptWithRole id (same as web).
+  /// Clears invalid stored ids that are not in the mapped list when a single
+  /// mapped dept can replace them; otherwise leaves multi-dept for the picker.
   Future<void> syncDepartmentFromMappedList() async {
     try {
-      final resolved = await DepartmentService.instance.resolveForDashboard(
-        selectedDeptId: _selectedDeptId,
-      );
-      if (resolved == null) return;
-      if (_selectedDeptId == resolved.id &&
-          _selectedDeptName == resolved.name) {
+      final depts =
+          await DepartmentService.instance.fetchMappedDepartments();
+      if (depts.isEmpty) return;
+
+      final current = _selectedDeptId;
+      final stillValid = current != null &&
+          current != '0' &&
+          depts.any((d) => d.id == current);
+
+      if (stillValid) {
+        final match = depts.firstWhere((d) => d.id == current);
+        final nameChanged = _selectedDeptName != match.nameEn ||
+            (_selectedDeptNameHi ?? '') != match.nameHi;
+        if (nameChanged) {
+          await setDepartment(
+            id: match.id,
+            name: match.nameEn,
+            nameHi: match.nameHi,
+          );
+        }
         return;
       }
-      await setDepartment(id: resolved.id, name: resolved.name);
+
+      if (depts.length == 1) {
+        await setDepartment(
+          id: depts.first.id,
+          name: depts.first.nameEn,
+          nameHi: depts.first.nameHi,
+        );
+        return;
+      }
+
+      // Multiple mapped depts but stored id is missing/invalid — clear so
+      // dashboard does not send a JWT-only or stale commonId.
+      if (current != null && current.isNotEmpty && current != '0') {
+        AppLogger.d(
+          'RoleContext',
+          'Clearing unmapped selectedDeptId=$current',
+        );
+        _selectedDeptId = null;
+        _selectedDeptName = null;
+        _selectedDeptNameHi = null;
+        await _storage.delete(key: _deptIdKey);
+        await _storage.delete(key: _deptNameKey);
+        await _storage.delete(key: _deptNameHiKey);
+        notifyListeners();
+      }
     } catch (e) {
       AppLogger.d('RoleContext', 'Department sync skipped: $e');
     }
@@ -287,9 +349,12 @@ class RoleContext extends ChangeNotifier {
     _activePanel = null;
     _selectedDeptId = null;
     _selectedDeptName = null;
+    _selectedDeptNameHi = null;
     _reportFilter = ReportFilterState.defaultRange();
+    DepartmentService.instance.clearCache();
     await _storage.delete(key: _deptIdKey);
     await _storage.delete(key: _deptNameKey);
+    await _storage.delete(key: _deptNameHiKey);
     await _storage.delete(key: _panelKey);
     notifyListeners();
   }

@@ -57,6 +57,7 @@ class _ReportFilterSheetState extends State<ReportFilterSheet> {
   late DateTime _end;
   late String _serviceId;
   late String _serviceName;
+  late String _serviceNameHi;
   String? _districtId;
   String? _districtName;
   String? _blockId;
@@ -69,6 +70,7 @@ class _ReportFilterSheetState extends State<ReportFilterSheet> {
     _end = widget.filters.endDate;
     _serviceId = widget.filters.serviceId;
     _serviceName = widget.filters.serviceName;
+    _serviceNameHi = widget.filters.serviceNameHi;
     _districtId = widget.filters.districtId;
     _districtName = widget.filters.districtName;
     _blockId = widget.filters.blockId;
@@ -148,7 +150,10 @@ class _ReportFilterSheetState extends State<ReportFilterSheet> {
                   .map(
                     (s) => DropdownMenuItem(
                       value: s.serviceId,
-                      child: Text(s.serviceName, overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        s.localizedName(context),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                   .toList(),
@@ -161,6 +166,7 @@ class _ReportFilterSheetState extends State<ReportFilterSheet> {
                 setState(() {
                   _serviceId = id;
                   _serviceName = service.serviceName;
+                  _serviceNameHi = service.serviceNameHi;
                   _districtId = null;
                   _districtName = null;
                   _blockId = null;
@@ -242,10 +248,13 @@ class _ReportFilterSheetState extends State<ReportFilterSheet> {
                   endDate: _end,
                   serviceId: _serviceId,
                   serviceName: _serviceName,
+                  serviceNameHi: _serviceNameHi,
                   districtId: _districtId,
                   districtName: _districtName,
+                  districtNameHi: '',
                   blockId: _blockId,
                   blockName: _blockName,
+                  blockNameHi: '',
                   clearDistrict: _districtId == null,
                   clearBlock: _blockId == null,
                 ),

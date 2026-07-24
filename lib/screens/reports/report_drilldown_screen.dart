@@ -23,9 +23,14 @@ class ReportDrilldownScreen extends StatefulWidget {
 class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   List<ServiceOption> _services = const [];
   List<Map<String, dynamic>> _rows = const [];
+  Map<String, ({String en, String hi})> _districtNamesById = const {};
   ReportFilterState _filters = ReportFilterState.defaultRange();
   DateTime? _tempFrom;
   DateTime? _tempTo;
+  String _tempServiceId = '1000';
+  String _tempServiceName = '';
+  String _tempServiceNameHi = '';
+  String? _loadedDeptId;
   bool _loading = true;
   bool _loadingServices = true;
   String? _error;
@@ -34,28 +39,48 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   var _dataLoadInFlight = false;
 
   List<ServiceOption> get _dropdownServices {
-    if (_filters.serviceId == '1000') return _services;
-    if (_services.any((s) => s.serviceId == _filters.serviceId)) {
+    if (_tempServiceId == '1000') return _services;
+    if (_services.any((s) => s.serviceId == _tempServiceId)) {
       return _services;
     }
-    if (_filters.serviceName.isNotEmpty) {
+    if (_tempServiceName.isNotEmpty) {
       return [
         ..._services,
         ServiceOption(
-          serviceId: _filters.serviceId,
-          serviceName: _filters.serviceName,
+          serviceId: _tempServiceId,
+          serviceName: _tempServiceName,
+          serviceNameHi: _tempServiceNameHi,
         ),
       ];
     }
     return _services;
   }
 
+  Map<String, ServiceOption> get _servicesById => {
+        for (final s in _services) s.serviceId: s,
+      };
+
+  ServiceOption? _catalogService(String serviceId) {
+    for (final s in _services) {
+      if (s.serviceId == serviceId) return s;
+    }
+    return null;
+  }
+
+  void _syncTempFromFilters(ReportFilterState filters) {
+    _tempFrom = filters.startDate;
+    _tempTo = filters.endDate;
+    _tempServiceId = filters.serviceId;
+    _tempServiceName = filters.serviceName;
+    _tempServiceNameHi = filters.serviceNameHi;
+  }
+
   @override
   void initState() {
     super.initState();
     _filters = RoleContext.instance.reportFilter;
-    _tempFrom = _filters.startDate;
-    _tempTo = _filters.endDate;
+    _syncTempFromFilters(_filters);
+    _loadedDeptId = RoleContext.instance.selectedDeptId;
     _bootstrap();
     RoleContext.instance.addListener(_onRoleChanged);
   }
@@ -69,6 +94,14 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   void _onRoleChanged() {
     if (!mounted) return;
     if (RoleContext.instance.activePanel != SmartPanel.department) return;
+
+    final deptId = RoleContext.instance.selectedDeptId;
+    final deptChanged = deptId != _loadedDeptId;
+    if (deptChanged) {
+      _loadedDeptId = deptId;
+      _loadServices(resetServiceIfMissing: true);
+    }
+
     final next = RoleContext.instance.reportFilter;
     final filtersChanged = next.serviceId != _filters.serviceId ||
         next.districtId != _filters.districtId ||
@@ -79,8 +112,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
     if (!filtersChanged) return;
     setState(() {
       _filters = next;
-      _tempFrom = _filters.startDate;
-      _tempTo = _filters.endDate;
+      _syncTempFromFilters(_filters);
     });
     _loadData();
   }
@@ -89,22 +121,71 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
     if (RoleContext.instance.activePanel != SmartPanel.department) return;
     await RoleContext.instance.syncDepartmentFromMappedList();
     if (RoleContext.instance.activePanel != SmartPanel.department) return;
-    await _loadServices();
+    _loadedDeptId = RoleContext.instance.selectedDeptId;
+    await Future.wait([
+      _loadServices(),
+      _loadDistrictLookup(),
+    ]);
     await _loadData();
   }
 
-  Future<void> _loadServices() async {
+  Future<void> _loadDistrictLookup() async {
+    final lookup = await SwsReportService.instance.fetchDistrictNameLookup();
+    if (!mounted) return;
+    setState(() => _districtNamesById = lookup);
+  }
+
+  Future<void> _loadServices({bool resetServiceIfMissing = false}) async {
     setState(() {
       _loadingServices = true;
       _servicesError = null;
     });
     try {
-      final services = await SwsReportService.instance.fetchServices();
+      final services = await SwsReportService.instance.fetchServices(
+        departmentId: RoleContext.instance.selectedDeptId,
+      );
       if (!mounted) return;
       setState(() {
         _services = services;
         _loadingServices = false;
+
+        final appliedMatch = _catalogService(_filters.serviceId);
+        if (appliedMatch != null && _filters.hasService) {
+          _filters = _filters.copyWith(
+            serviceName: appliedMatch.serviceName,
+            serviceNameHi: appliedMatch.serviceNameHi,
+          );
+        } else if (resetServiceIfMissing &&
+            _filters.hasService &&
+            appliedMatch == null) {
+          _filters = _filters.copyWith(
+            serviceId: '1000',
+            serviceName: '',
+            serviceNameHi: '',
+            clearDistrict: true,
+            clearBlock: true,
+            clearRural: true,
+          );
+          RoleContext.instance.updateReportFilter(_filters);
+          _syncTempFromFilters(_filters);
+        }
+
+        final pendingMatch = _catalogService(_tempServiceId);
+        if (pendingMatch != null && _tempServiceId != '1000') {
+          _tempServiceName = pendingMatch.serviceName;
+          _tempServiceNameHi = pendingMatch.serviceNameHi;
+        } else if (resetServiceIfMissing &&
+            _tempServiceId != '1000' &&
+            pendingMatch == null) {
+          _tempServiceId = '1000';
+          _tempServiceName = '';
+          _tempServiceNameHi = '';
+        }
       });
+      if (resetServiceIfMissing &&
+          (_filters.serviceId == '1000' || !_filters.hasService)) {
+        await _loadData();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -112,6 +193,44 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
         _loadingServices = false;
       });
     }
+  }
+
+  List<Map<String, dynamic>> _enrichRows(List<Map<String, dynamic>> rows) {
+    return rows.map((row) {
+      final enriched = Map<String, dynamic>.from(row);
+
+      // Service: fill Hindi from department catalog when SP row lacks it.
+      final serviceId = pickReportField(row, const ['serviceId', 'SERVICE_ID']);
+      final catalog = _catalogService(serviceId);
+      if (catalog != null) {
+        if (serviceNameEnFromRow(enriched).isEmpty &&
+            catalog.serviceName.isNotEmpty) {
+          enriched['serviceName'] = catalog.serviceName;
+        }
+        if (serviceNameHiFromRow(enriched).isEmpty &&
+            catalog.serviceNameHi.isNotEmpty) {
+          enriched['serviceNameHi'] = catalog.serviceNameHi;
+        }
+      }
+
+      // District: enrich EN/HI from DistrictMaster lookup when available.
+      final districtId = pickReportField(row, const [
+        'districtId',
+        'DISTRICT_ID',
+        'districtid',
+      ]);
+      final lookup = _districtNamesById[districtId];
+      if (lookup != null) {
+        if (districtNameEnFromRow(enriched).isEmpty && lookup.en.isNotEmpty) {
+          enriched['districtName'] = lookup.en;
+        }
+        if (districtNameHiFromRow(enriched).isEmpty && lookup.hi.isNotEmpty) {
+          enriched['districtNameHi'] = lookup.hi;
+        }
+      }
+
+      return enriched;
+    }).toList();
   }
 
   Future<void> _loadData() async {
@@ -126,7 +245,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
       final rows = await SwsReportService.instance.fetchForLevel(_filters);
       if (!mounted || generation != _dataLoadGeneration) return;
       setState(() {
-        _rows = rows;
+        _rows = _enrichRows(rows);
         _loading = false;
       });
     } catch (e) {
@@ -141,7 +260,10 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   }
 
   void _applyFilters(ReportFilterState next) {
-    setState(() => _filters = next);
+    setState(() {
+      _filters = next;
+      _syncTempFromFilters(next);
+    });
     RoleContext.instance.updateReportFilter(next);
     _loadData();
   }
@@ -158,10 +280,14 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
       );
       return;
     }
+    final catalog = _catalogService(_tempServiceId);
     _applyFilters(
       _filters.copyWith(
         startDate: _tempFrom ?? _filters.startDate,
         endDate: _tempTo ?? _filters.endDate,
+        serviceId: _tempServiceId,
+        serviceName: catalog?.serviceName ?? _tempServiceName,
+        serviceNameHi: catalog?.serviceNameHi ?? _tempServiceNameHi,
         clearDistrict: true,
         clearBlock: true,
         clearRural: true,
@@ -173,8 +299,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
     final fresh = ReportFilterState.defaultRange();
     setState(() {
       _filters = fresh;
-      _tempFrom = fresh.startDate;
-      _tempTo = fresh.endDate;
+      _syncTempFromFilters(fresh);
     });
     RoleContext.instance.resetReportFilter();
     _loadData();
@@ -183,60 +308,58 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
   void _onRowTap(Map<String, dynamic> row) {
     switch (_filters.drillLevel) {
       case ReportDrillLevel.allServices:
+        final serviceId = _pick(row, const ['serviceId', 'SERVICE_ID']);
+        final rowEn = serviceNameEnFromRow(row);
+        final rowHi = serviceNameHiFromRow(row);
+        final catalog = _catalogService(serviceId);
         _applyFilters(
           _filters.copyWith(
-            serviceId: _pick(row, const ['serviceId', 'SERVICE_ID']),
-            serviceName: _pick(row, const ['serviceName', 'SERVICE_NAME']),
+            serviceId: serviceId,
+            serviceName: rowEn.isNotEmpty
+                ? rowEn
+                : (catalog?.serviceName ?? serviceId),
+            serviceNameHi: rowHi.isNotEmpty
+                ? rowHi
+                : (catalog?.serviceNameHi ?? ''),
             clearDistrict: true,
             clearBlock: true,
             clearRural: true,
           ),
         );
       case ReportDrillLevel.districts:
+        final districtId = _numericIdString(
+          _pick(row, const ['districtId', 'DISTRICT_ID', 'districtid']),
+        );
+        final lookup = _districtNamesById[districtId];
+        final en = districtNameEnFromRow(row);
+        final hi = districtNameHiFromRow(row);
         _applyFilters(
           _filters.copyWith(
-            districtId: _numericIdString(
-              _pick(row, const ['districtId', 'DISTRICT_ID', 'districtid']),
-            ),
-            districtName: _pick(row, const [
-              'districtName',
-              'DISTRICT_NAME',
-              'DISTRICT_NAME_EN',
-            ]),
+            districtId: districtId,
+            districtName: en.isNotEmpty ? en : (lookup?.en ?? ''),
+            districtNameHi: hi.isNotEmpty ? hi : (lookup?.hi ?? ''),
             clearBlock: true,
             clearRural: true,
           ),
         );
       case ReportDrillLevel.ruralUrban:
-        final area = _pick(row, const ['areaName', 'AREA_NAME', 'isRural', 'IS_RURAL']);
-        if (_isUrbanArea(area)) {
-          // Web ReportPage: Urban → MemberList with blockId=0.
-          _applyFilters(
-            _filters.copyWith(
-              selectedRural: 'Urban',
-              selectedRuralId: 0,
-              clearBlock: true,
-            ),
-          );
-        } else {
-          _applyFilters(
-            _filters.copyWith(
-              selectedRural: 'Rural',
-              selectedRuralId: 1,
-              clearBlock: true,
-            ),
-          );
+        // Use raw API area value (not localized label). Existing conditions:
+        // Urban Count is terminal; Rural drills to block-wise count.
+        final area = areaRawFromRow(row);
+        if (isUrbanAreaValue(area)) {
+          break;
         }
-      case ReportDrillLevel.blocks:
-        // Rural block → beneficiary list (web MemberList with selectedBlockId).
         _applyFilters(
           _filters.copyWith(
-            blockId: _numericIdString(
-              _pick(row, const ['blockId', 'BLOCK_ID', 'blockid']),
-            ),
-            blockName: _pick(row, const ['blockName', 'BLOCK_NAME', 'BLOCK_NAME_EN']),
+            // Always store English for API / drillLevel comparisons.
+            selectedRural: 'Rural',
+            selectedRuralId: 1,
+            clearBlock: true,
           ),
         );
+      case ReportDrillLevel.blocks:
+        // Block Count is terminal — do not open Beneficiary Details.
+        break;
       case ReportDrillLevel.beneficiaries:
         break;
     }
@@ -267,6 +390,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
           _filters.copyWith(
             serviceId: '1000',
             serviceName: '',
+            serviceNameHi: '',
             clearDistrict: true,
             clearBlock: true,
             clearRural: true,
@@ -275,27 +399,6 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
       case ReportDrillLevel.allServices:
         break;
     }
-  }
-
-  bool _isUrbanArea(String area) {
-    final normalized = area.trim().toLowerCase();
-    if (normalized.isEmpty) return false;
-    // IS_RURAL flag occasionally surfaces as 0/1 or Y/N from area report.
-    if (normalized == '0' ||
-        normalized == 'n' ||
-        normalized == 'no' ||
-        normalized == 'false') {
-      return true;
-    }
-    if (normalized == '1' ||
-        normalized == 'y' ||
-        normalized == 'yes' ||
-        normalized == 'true') {
-      return false;
-    }
-    return normalized == 'urban' ||
-        normalized.contains('urban') ||
-        normalized.contains('शहरी');
   }
 
   /// Normalize JDBC/BigDecimal-style ids ("101.0") before storing on filters.
@@ -325,7 +428,10 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
     AppLocaleScope.watch(context);
     return RefreshIndicator(
       onRefresh: () async {
-        await _loadServices();
+        await Future.wait([
+          _loadServices(),
+          _loadDistrictLookup(),
+        ]);
         await _loadData();
       },
       child: ListView(
@@ -350,7 +456,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
           const SizedBox(height: 12),
           ReportFilterCard(
             services: _dropdownServices,
-            filters: _filters,
+            pendingServiceId: _tempServiceId,
             tempFrom: _tempFrom,
             tempTo: _tempTo,
             loadingServices: _loadingServices,
@@ -358,13 +464,9 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
             onServiceChanged: (svc) {
               if (svc == null) return;
               setState(() {
-                _filters = _filters.copyWith(
-                  serviceId: svc.serviceId,
-                  serviceName: svc.serviceName,
-                  clearDistrict: true,
-                  clearBlock: true,
-                  clearRural: true,
-                );
+                _tempServiceId = svc.serviceId;
+                _tempServiceName = svc.serviceName;
+                _tempServiceNameHi = svc.serviceNameHi;
               });
             },
             onFromChanged: (d) => setState(() => _tempFrom = d),
@@ -375,10 +477,12 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
           const SizedBox(height: 12),
           ReportBreadcrumb(
             filters: _filters,
+            servicesById: _servicesById,
             onResetAll: () => _applyFilters(
               _filters.copyWith(
                 serviceId: '1000',
                 serviceName: '',
+                serviceNameHi: '',
                 clearDistrict: true,
                 clearBlock: true,
                 clearRural: true,
@@ -414,6 +518,7 @@ class _ReportDrilldownScreenState extends State<ReportDrilldownScreen> {
               level: _filters.drillLevel,
               rows: _rows,
               onRowTap: _onRowTap,
+              servicesById: _servicesById,
             ),
         ],
       ),
